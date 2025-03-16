@@ -614,6 +614,8 @@
 
         async function showResult() {
             try {
+                console.log('Starting result display process...');
+                
                 const resultOverlay = document.getElementById('resultOverlay');
                 const resultContent = document.getElementById('resultContent');
                 
@@ -623,11 +625,12 @@
                     return;
                 }
                 
-                console.log('Starting result display process...');
-                
                 // Get the completed period
                 const completedPeriod = await getCompletedPeriod();
                 console.log('Showing result for completed period:', completedPeriod);
+                
+                // Check if we're on Render
+                const isOnRender = window.location.hostname.includes('onrender.com');
                 
                 // Fetch the result directly from the server API with no caching
                 const fetchOptions = {
@@ -636,31 +639,51 @@
                         'Cache-Control': 'no-cache, no-store, must-revalidate',
                         'Pragma': 'no-cache',
                         'Expires': '0'
-                    }
+                    },
+                    // Add a timeout for fetch
+                    signal: AbortSignal.timeout(10000) // 10 second timeout
                 };
                 
-                console.log('Fetching result from:', getApiUrl('/api/latest-result'));
-                const response = await fetch(getApiUrl('/api/latest-result'), fetchOptions);
+                let result = null;
+                let fetchError = null;
                 
-                if (!response.ok) {
-                    console.error('Server returned error:', response.status, response.statusText);
-                    showNotification('Error fetching result from server', 'error');
-                    return;
+                try {
+                    console.log('Fetching result from:', getApiUrl('/api/latest-result'));
+                    const response = await fetch(getApiUrl('/api/latest-result'), fetchOptions);
+                    
+                    if (!response.ok) {
+                        console.error('Server returned error:', response.status, response.statusText);
+                        fetchError = `Server error: ${response.status}`;
+                    } else {
+                        result = await response.json();
+                        console.log('Raw result from server:', JSON.stringify(result));
+                    }
+                } catch (error) {
+                    console.error('Error fetching result:', error);
+                    fetchError = error.message;
                 }
                 
-                const result = await response.json();
-                console.log('Raw result from server:', JSON.stringify(result));
+                // If fetch failed and we're on Render, generate a fallback result
+                if (!result && isOnRender) {
+                    console.log('Generating fallback result for Render deployment');
+                    result = generateFallbackResult(completedPeriod);
+                }
                 
-                if (!result || typeof result.number !== 'number') {
-                    console.error('Invalid result format:', result);
-                    showNotification('Invalid result format received from server', 'warning');
+                if (!result) {
+                    console.error('No result available and fallback generation failed');
+                    showNotification('Unable to fetch result from server', 'warning');
                     return;
                 }
                 
                 // Only process bet if there's a confirmed bet that hasn't been processed
                 if (currentBet && activeBetConfirmed && !betProcessed) {
-                    await processResult(result);
-                    betProcessed = true;  // Mark bet as processed
+                    try {
+                        await processResult(result);
+                    } catch (processError) {
+                        console.error('Error processing bet result:', processError);
+                    } finally {
+                        betProcessed = true;  // Mark bet as processed
+                    }
                 }
                 
                 // Reset bet states after showing result
@@ -691,7 +714,8 @@
                     number: result.number,
                     size: result.size,
                     color: result.color,
-                    colorClass: colorClass
+                    colorClass: colorClass,
+                    isFallback: result.isFallback || false
                 });
                 
                 // Display result
@@ -707,6 +731,7 @@
                                 ${result.color}
                             </div>
                         </div>
+                        ${result.isFallback ? '<p class="text-yellow-500 mt-2 text-sm">*Fallback result</p>' : ''}
                     </div>
                 `;
                 
@@ -715,7 +740,11 @@
                 resultOverlay.style.display = 'block';
                 
                 // Force an update of the record table
-                updateRecordTable();
+                try {
+                    await updateRecordTable();
+                } catch (updateError) {
+                    console.error('Error updating record table:', updateError);
+                }
                 
                 // Hide after 5 seconds
                 setTimeout(() => {
@@ -726,6 +755,37 @@
                 console.error('Error showing result:', error);
                 showNotification('Error showing result: ' + error.message, 'warning');
             }
+        }
+
+        // Function to generate a fallback result when server is unavailable
+        function generateFallbackResult(period) {
+            // Generate a random number between 0-9
+            const number = Math.floor(Math.random() * 10);
+            
+            // Determine size based on number
+            const size = number >= 5 ? 'BIG' : 'SMALL';
+            
+            // Determine color based on number
+            let color;
+            if (number === 0) {
+                color = 'VIOLET';
+            } else if (number === 5) {
+                // Make 5 sometimes VIOLET and sometimes GREEN
+                color = Math.random() < 0.5 ? 'VIOLET GREEN' : 'GREEN';
+            } else if (number % 2 === 0) {
+                color = 'RED';
+            } else {
+                color = 'GREEN';
+            }
+            
+            return {
+                number,
+                size,
+                color,
+                timestamp: new Date(),
+                period,
+                isFallback: true
+            };
         }
 
         async function submitBet() {
@@ -886,7 +946,33 @@
         // Get server info including port
         async function getServerInfo() {
             try {
-                // First try with relative URL
+                console.log('Getting server info...');
+                
+                // Check if we're on Render
+                const isOnRender = window.location.hostname.includes('onrender.com');
+                
+                if (isOnRender) {
+                    // When on Render, use the base URL without port
+                    serverBaseUrl = `${window.location.protocol}//${window.location.hostname}`;
+                    console.log(`Running on Render, using base URL: ${serverBaseUrl}`);
+                    
+                    // Try to get server info
+                    try {
+                        const response = await fetch(`${serverBaseUrl}/api/server-info`);
+                        if (response.ok) {
+                            const data = await response.json();
+                            console.log('Server info received:', data);
+                            return data;
+                        }
+                    } catch (renderError) {
+                        console.error('Error getting server info on Render:', renderError);
+                    }
+                    
+                    // Even if the request fails, return a basic object with the current time
+                    return { serverTime: Date.now() };
+                }
+                
+                // First try with relative URL (for local development)
                 const response = await fetch('/api/server-info');
                 
                 if (response.ok) {
@@ -924,34 +1010,72 @@
                     console.error('Failed to find server on any port:', fallbackError);
                 }
             }
-            return null;
+            return { serverTime: Date.now() }; // Return a basic object with the current time as fallback
         }
 
         // Helper function to get the correct URL for API endpoints
         function getApiUrl(endpoint) {
+            // Check if we're on Render
+            const isOnRender = window.location.hostname.includes('onrender.com');
+            
+            if (isOnRender) {
+                // When on Render, use the base URL without port
+                const renderBaseUrl = `${window.location.protocol}//${window.location.hostname}`;
+                console.log(`Using Render base URL for API call: ${renderBaseUrl}${endpoint}`);
+                return `${renderBaseUrl}${endpoint}`;
+            }
+            
+            // For local development
             if (serverBaseUrl) {
+                console.log(`Using base URL for API call: ${serverBaseUrl}${endpoint}`);
                 return `${serverBaseUrl}${endpoint}`;
             }
+            
+            console.log(`Using relative URL for API call: ${endpoint}`);
             return endpoint; // Use relative URL if no base URL is set
         }
 
         // Synchronize time with server
         async function syncTimeWithServer() {
             try {
+                console.log('Attempting to synchronize time with server...');
                 const startTime = Date.now();
-                const response = await fetch(getApiUrl('/api/time'));
+                
+                // Use a timeout to prevent long-hanging requests
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Request timeout')), 5000);
+                });
+                
+                const fetchPromise = fetch(getApiUrl('/api/time'));
+                
+                // Race between fetch and timeout
+                const response = await Promise.race([fetchPromise, timeoutPromise]);
                 const endTime = Date.now();
                 const roundTripTime = endTime - startTime;
+                
+                console.log(`Time sync response received in ${roundTripTime}ms`);
                 
                 if (response.ok) {
                     const data = await response.json();
                     // Adjust for network latency (half of round trip time)
                     const serverTime = data.serverTime + (roundTripTime / 2);
                     serverTimeOffset = serverTime - Date.now();
-                    console.log(`Time synchronized with server. Offset: ${serverTimeOffset}ms`);
+                    console.log(`Time synchronized with server. Server time: ${new Date(serverTime).toISOString()}, Offset: ${serverTimeOffset}ms`);
+                    return true;
+                } else {
+                    console.error(`Server returned error: ${response.status} ${response.statusText}`);
+                    return false;
                 }
             } catch (error) {
                 console.error('Error synchronizing time with server:', error);
+                
+                // If we're on Render and sync fails, use a small default offset
+                if (window.location.hostname.includes('onrender.com')) {
+                    console.log('Using default time offset for Render deployment');
+                    serverTimeOffset = 0; // No offset, just use client time
+                }
+                
+                return false;
             }
         }
 
@@ -1064,39 +1188,88 @@
 
         // Initialize timers with precise interval
         document.addEventListener('DOMContentLoaded', async () => {
-            document.getElementById('walletBalance').textContent = walletBalance.toFixed(2);
-            
-            // Get server info first
-            await getServerInfo();
-            
-            // Synchronize time with server
-            await syncTimeWithServer();
-            
-            // Start the timer immediately
-            updateTimer();
-            updatePeriod();
-            
-            // Calculate initial delay to sync with system clock
-            const now = new Date();
-            const milliseconds = now.getMilliseconds();
-            const initialDelay = 10 - (milliseconds % 10); // Sync to nearest 10ms boundary
-            
-            // Start interval after initial delay
-            setTimeout(() => {
-            setInterval(() => {
+            try {
+                console.log('Initializing application...');
+                document.getElementById('walletBalance').textContent = walletBalance.toFixed(2);
+                
+                // Check if we're on Render
+                const isOnRender = window.location.hostname.includes('onrender.com');
+                if (isOnRender) {
+                    console.log('Running on Render deployment');
+                } else {
+                    console.log('Running in local/development environment');
+                }
+                
+                // Get server info first
+                try {
+                    const serverInfo = await getServerInfo();
+                    console.log('Server info retrieved:', serverInfo);
+                } catch (serverInfoError) {
+                    console.error('Error getting server info:', serverInfoError);
+                    showNotification('Unable to connect to server. Some features may not work correctly.', 'warning');
+                }
+                
+                // Synchronize time with server
+                try {
+                    const syncSuccess = await syncTimeWithServer();
+                    if (!syncSuccess && isOnRender) {
+                        console.log('Time sync failed on Render, using local time');
+                        // On Render, if time sync fails, we'll just use local time
+                        serverTimeOffset = 0;
+                    }
+                } catch (syncError) {
+                    console.error('Error during time synchronization:', syncError);
+                    // Continue with local time
+                    serverTimeOffset = 0;
+                }
+                
+                // Start the timer immediately
                 updateTimer();
                 updatePeriod();
-                }, 10);
-            }, initialDelay);
-            
-            // Re-sync time with server every minute to maintain accuracy
-            setInterval(syncTimeWithServer, 60000);
-            
-            // Setup Firestore listeners
-            setupRealtimeListeners();
-            
-            // Initial record table update
-            updateRecordTable();
+                
+                // Calculate initial delay to sync with system clock
+                const now = new Date();
+                const milliseconds = now.getMilliseconds();
+                const initialDelay = 10 - (milliseconds % 10); // Sync to nearest 10ms boundary
+                
+                // Start interval after initial delay
+                setTimeout(() => {
+                    setInterval(() => {
+                        updateTimer();
+                        updatePeriod();
+                    }, 10);
+                }, initialDelay);
+                
+                // Re-sync time with server every minute to maintain accuracy
+                // Use a more robust interval that won't break if sync fails
+                setInterval(async () => {
+                    try {
+                        await syncTimeWithServer();
+                    } catch (error) {
+                        console.error('Error in time sync interval:', error);
+                    }
+                }, 60000);
+                
+                // Setup Firestore listeners
+                try {
+                    setupRealtimeListeners();
+                } catch (listenersError) {
+                    console.error('Error setting up realtime listeners:', listenersError);
+                    showNotification('Unable to set up real-time updates. Please refresh the page.', 'warning');
+                }
+                
+                // Initial record table update
+                try {
+                    await updateRecordTable();
+                } catch (recordError) {
+                    console.error('Error updating record table:', recordError);
+                }
+                
+                console.log('Application initialization complete');
+            } catch (error) {
+                console.error('Critical error during application initialization:', error);
+                showNotification('Error initializing application. Please refresh the page.', 'error');
+            }
         });
 
         // Update getCurrentPeriod function
