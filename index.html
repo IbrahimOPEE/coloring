@@ -1,0 +1,1850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game UI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <script>
+        // Define setupRealtimeListeners function early
+        function setupRealtimeListeners() {
+            const user = auth.currentUser;
+            if (!user) {
+                console.error('No user logged in');
+                return;
+            }
+
+            // Listen for game state changes
+            collections.gameState.doc('current').onSnapshot(snapshot => {
+                if (snapshot.exists) {
+                    gameState = snapshot.data();
+                }
+            }, error => {
+                console.error('Error in game state listener:', error);
+                showNotification('Unable to update game state. Please refresh the page.', 'warning');
+            });
+
+            // Listen for game history changes
+            collections.gameHistory
+                .where('userId', '==', user.uid)
+                .orderBy('timestamp', 'desc')
+                .limit(10)
+                .onSnapshot(snapshot => {
+                    console.log('Game history update received');
+                    updateRecordTable(snapshot);
+                }, error => {
+                    console.error('Error in history listener:', error);
+                    showNotification('Unable to update game history. Please refresh the page.', 'warning');
+                });
+                
+            // Listen for user balance changes
+            collections.users.doc(user.uid).onSnapshot(snapshot => {
+                if (snapshot.exists) {
+                    const userData = snapshot.data();
+                    walletBalance = parseFloat(userData.balance) || 0;
+                    document.getElementById('walletBalance').textContent = walletBalance.toFixed(2);
+                }
+            }, error => {
+                console.error('Error in user balance listener:', error);
+            });
+        }
+        
+        // Add auth check at the start of your script
+        document.addEventListener('DOMContentLoaded', function() {
+            auth.onAuthStateChanged(async function(user) {
+                if (!user) {
+                    window.location.replace('auth.html');
+                    return;
+                }
+                
+                // Get user data from Firestore
+                try {
+                    const userDoc = await collections.users.doc(user.uid).get();
+                    if (userDoc.exists) {
+                        const userData = userDoc.data();
+                        walletBalance = parseFloat(userData.balance) || 0;
+                        document.getElementById('walletBalance').textContent = walletBalance.toFixed(2);
+                    }
+                    // Setup listeners after authentication
+                    setupRealtimeListeners();
+                    // Initial record table update
+                    updateRecordTable();
+                } catch (error) {
+                    console.error('Error loading user data:', error);
+                }
+            });
+        });
+
+        // Add logout function
+        async function handleLogout() {
+            try {
+                await auth.signOut();
+                // Clear any local data
+                localStorage.clear();
+                sessionStorage.clear();
+                window.location.replace('auth.html');
+            } catch (error) {
+                console.error('Error signing out:', error);
+                showNotification('Unable to sign out. Please try again.', 'warning');
+            }
+        }
+    </script>
+    <style>
+        .number-ball {
+            background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 70%);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            font-size: 1.25rem;
+            font-weight: bold;
+        }
+        .timer-digit {
+            aspect-ratio: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            min-width: 1.5rem;
+        }
+        .game-container {
+            max-width: 400px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+        @media (max-width: 380px) {
+            .game-container {
+                padding: 0.5rem;
+            }
+            .number-ball {
+                width: 2.5rem !important;
+                height: 2.5rem !important;
+                font-size: 1rem;
+            }
+        }
+        .wallet-card {
+            background: linear-gradient(145deg, #ff9f2d, #ff8c00);
+            box-shadow: 0 4px 15px rgba(255, 140, 0, 0.3);
+        }
+        .game-option {
+            background: rgba(55, 65, 81, 0.9);
+            backdrop-filter: blur(5px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .game-option.active {
+            background: linear-gradient(145deg, #ff9f2d, #ff8c00);
+        }
+        .nav-item {
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        .nav-item.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 20px;
+            height: 2px;
+            background-color: #ff8c00;
+        }
+        .navbar {
+            background: linear-gradient(145deg, #2d3748, #1a202c);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .logo {
+            font-size: 1.75rem;
+            font-weight: bold;
+            background: linear-gradient(145deg, #ff9f2d, #ff8c00);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .blur-container {
+            transition: filter 0.3s ease;
+        }
+        .blur-container.active {
+            filter: blur(4px);
+        }
+        #overlayCountdown {
+            transition: transform 0.2s ease;
+        }
+        
+        #overlayCountdown.scale-150 {
+            transform: scale(1.5);
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        #countdownOverlay {
+            animation: fadeIn 0.3s ease;
+        }
+        .text-shadow {
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        #resultOverlay .rounded-full {
+            transition: all 0.3s ease;
+        }
+        
+        #resultOverlay .rounded-full:hover {
+            transform: scale(1.05);
+        }
+        .slide-in {
+            transform: translate(-50%, 0%) !important;
+        }
+        #notification {
+            transform: translate(-50%, -150%);
+            transition: transform 0.3s ease;
+        }
+        /* Notification styles */
+        .notification-slide-in {
+            transform: translate(-50%, 0%) !important;
+        }
+        
+        /* Notification types */
+        .notification-error {
+            background: #2d1c1c !important;
+            border-color: #ef4444 !important;
+        }
+        
+        .notification-error .notification-icon {
+            color: #ef4444 !important;
+        }
+        
+        .notification-success {
+            background: #1c2d1c !important;
+            border-color: #22c55e !important;
+        }
+        
+        .notification-success .notification-icon {
+            color: #22c55e !important;
+        }
+        
+        .notification-warning {
+            background: #2d2c1c !important;
+            border-color: #f59e0b !important;
+        }
+        
+        .notification-warning .notification-icon {
+            color: #f59e0b !important;
+        }
+        
+        .notification-info {
+            background: #1c1f2d !important;
+            border-color: #3b82f6 !important;
+        }
+        
+        .notification-info .notification-icon {
+            color: #3b82f6 !important;
+        }
+        
+        .notification-shake {
+            animation: shake 0.82s cubic-bezier(.36,.07,.19,.97) both;
+        }
+        
+        @keyframes shake {
+            10%, 90% { transform: translate(-50%, 0) translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate(-50%, 0) translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate(-50%, 0) translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate(-50%, 0) translate3d(4px, 0, 0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 min-h-screen">
+    <div id="notification" class="fixed top-4 left-1/2 -translate-x-1/2 transform transition-all duration-300 z-[60]">
+        <div class="notification-content bg-[#1a1f2e] text-white px-6 py-3 rounded-xl shadow-lg border border-gray-700 flex items-center gap-3 min-w-[320px]">
+            <i class="notification-icon text-lg"></i>
+            <span id="notificationMessage" class="text-sm font-medium"></span>
+        </div>
+    </div>
+    <div class="blur-container">
+        <div class="game-container mt-8">
+            <!-- Add result overlay -->
+            <div id="resultOverlay" class="fixed inset-0 bg-black/90 z-[60] hidden">
+                <div class="h-full flex items-center justify-center">
+                    <div id="resultContent" class="bg-[#252a3c] rounded-xl p-8 max-w-sm w-full mx-4 transform transition-all duration-300">
+                        <!-- Content will be dynamically inserted here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wallet Section -->
+            <div class="wallet-card rounded-2xl p-4 mb-4">
+                <div class="text-white text-center">
+                    <div class="text-3xl font-bold flex justify-center items-center gap-2">
+                        ₹<span id="walletBalance">0.00</span>
+                        <i class="fas fa-sync-alt w-5 h-5 cursor-pointer" onclick="refreshBalance()"></i>
+                    </div>
+                    <div class="text-sm opacity-90"><i class="fas fa-wallet"></i> Wallet Balance</div>
+                </div>
+                <div class="flex gap-4 mt-4">
+                    <button class="bg-red-500 text-white rounded-full py-2.5 flex-1 font-medium hover:bg-red-600 transition-colors shadow-lg">Withdraw</button>
+                    <button class="bg-green-600 text-white rounded-full py-2.5 flex-1 font-medium hover:bg-green-700 transition-colors shadow-lg">Deposit</button>
+                </div>
+            </div>
+
+            <!-- Game Options -->
+            <div class="grid grid-cols-4 gap-2 mb-4">
+                <div class="game-option active p-3 rounded-xl text-center text-white text-sm cursor-pointer hover:scale-105 transition-all">
+                    <div class="w-8 h-8 bg-red-400 rounded-full mx-auto mb-1 shadow-lg"></div>
+                    Win Go Party
+                </div>
+                <div class="game-option p-3 rounded-xl text-center text-white text-sm cursor-pointer hover:scale-105 transition-all">
+                    <div class="w-8 h-8 bg-gray-400 rounded-full mx-auto mb-1 shadow-lg"></div>
+                    Win Go Sapre
+                </div>
+                <div class="game-option p-3 rounded-xl text-center text-white text-sm cursor-pointer hover:scale-105 transition-all">
+                    <div class="w-8 h-8 bg-gray-400 rounded-full mx-auto mb-1 shadow-lg"></div>
+                    Win Go Bcone
+                </div>
+                <div class="game-option p-3 rounded-xl text-center text-white text-sm cursor-pointer hover:scale-105 transition-all">
+                    <div class="w-8 h-8 bg-gray-400 rounded-full mx-auto mb-1 shadow-lg"></div>
+                    Win Go Emerald
+                </div>
+            </div>
+
+            <!-- Info Buttons -->
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <button class="bg-gray-800 text-orange-500 rounded-xl py-2.5 px-4 text-sm font-medium hover:bg-gray-700 transition-all shadow-lg">
+                    <i class="fas fa-gamepad"></i> How to Play
+                </button>
+                <button class="bg-gray-800 text-orange-500 rounded-xl py-2.5 px-4 text-sm font-medium hover:bg-gray-700 transition-all shadow-lg">
+                    <i class="fas fa-clipboard-list"></i> Presale Rules
+                </button>
+            </div>
+
+            <!-- Period and Timer -->
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div class="wallet-card rounded-xl p-3">
+                    <div class="text-white text-sm mb-1"><i class="fas fa-trophy"></i> Period</div>
+                    <div class="text-white font-bold" id="period">202407022251</div>
+                </div>
+                <div class="wallet-card rounded-xl p-3">
+                    <div class="text-white text-sm mb-1"><i class="fas fa-clock"></i> Time Remaining</div>
+                    <div class="text-white flex justify-center gap-1">
+                        <span class="bg-gray-800 px-2 timer-digit rounded" id="seconds1">3</span>
+                        <span class="bg-gray-800 px-2 timer-digit rounded" id="seconds2">0</span>
+                        <span class="font-bold">:</span>
+                        <span class="bg-gray-800 px-2 timer-digit rounded" id="millis1">0</span>
+                        <span class="bg-gray-800 px-2 timer-digit rounded" id="millis2">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Color Buttons -->
+            <div class="grid grid-cols-3 gap-3 mb-4">
+                <button onclick="showPopup('green')" class="bg-green-500 text-white py-2.5 rounded-xl font-medium hover:bg-green-600 transition-all shadow-lg">Green</button>
+                <button onclick="showPopup('violet')" class="bg-violet-500 text-white py-2.5 rounded-xl font-medium hover:bg-violet-600 transition-all shadow-lg">Violet</button>
+                <button onclick="showPopup('red')" class="bg-red-500 text-white py-2.5 rounded-xl font-medium hover:bg-red-600 transition-all shadow-lg">Red</button>
+            </div>
+
+            <!-- Number Grid -->
+            <div class="bg-gray-800 p-4 rounded-xl mb-4">
+                <div class="grid grid-cols-5 gap-2">
+                    <button onclick="betOnNumber(0)" class="w-12 h-12 rounded-full bg-violet-500 text-white mx-auto number-ball hover:scale-105 transition-transform">0</button>
+                    <button onclick="betOnNumber(1)" class="w-12 h-12 rounded-full bg-green-500 text-white mx-auto number-ball hover:scale-105 transition-transform">1</button>
+                    <button onclick="betOnNumber(2)" class="w-12 h-12 rounded-full bg-red-500 text-white mx-auto number-ball hover:scale-105 transition-transform">2</button>
+                    <button onclick="betOnNumber(3)" class="w-12 h-12 rounded-full bg-green-500 text-white mx-auto number-ball hover:scale-105 transition-transform">3</button>
+                    <button onclick="betOnNumber(4)" class="w-12 h-12 rounded-full bg-red-500 text-white mx-auto number-ball hover:scale-105 transition-transform">4</button>
+                    <button onclick="betOnNumber(5)" class="w-12 h-12 rounded-full bg-green-500 text-white mx-auto number-ball hover:scale-105 transition-transform">5</button>
+                    <button onclick="betOnNumber(6)" class="w-12 h-12 rounded-full bg-red-500 text-white mx-auto number-ball hover:scale-105 transition-transform">6</button>
+                    <button onclick="betOnNumber(7)" class="w-12 h-12 rounded-full bg-green-500 text-white mx-auto number-ball hover:scale-105 transition-transform">7</button>
+                    <button onclick="betOnNumber(8)" class="w-12 h-12 rounded-full bg-red-500 text-white mx-auto number-ball hover:scale-105 transition-transform">8</button>
+                    <button onclick="betOnNumber(9)" class="w-12 h-12 rounded-full bg-green-500 text-white mx-auto number-ball hover:scale-105 transition-transform">9</button>
+                </div>
+            </div>
+
+            <!-- Size Buttons -->
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <button class="size-btn wallet-card text-white py-2.5 rounded-xl font-medium hover:opacity-90 transition-all shadow-lg" data-size="small">Small</button>
+                <button class="size-btn bg-orange-500 text-white py-2.5 rounded-xl font-medium hover:bg-orange-600 transition-all shadow-lg" data-size="big">Big</button>
+            </div>
+
+            <!-- Navigation -->
+            <div class="fixed bottom-0 left-0 right-0 bg-[#fff] border-t border-gray-800">
+                <div class="max-w-md mx-auto grid grid-cols-4 gap-4 p-3">
+                    <a href="index.html" class="nav-item active flex flex-col items-center text-orange-500">
+                        <span class="text-xl"><i class="fas fa-home"></i></span>
+                        <span class="text-xs font-medium">Home</span>
+                    </a>
+                    <a href="#" onclick="showAmountPopup('deposit'); return false;" class="nav-item flex flex-col items-center text-gray-400">
+                        <span class="text-xl"><i class="fas fa-download"></i></span>
+                        <span class="text-xs font-medium">Deposit</span>
+                    </a>
+                    <a href="#" onclick="showAmountPopup('withdraw'); return false;" class="nav-item flex flex-col items-center text-gray-400">
+                        <span class="text-xl"><i class="fas fa-upload"></i></span>
+                        <span class="text-xs font-medium">Withdraw</span>
+                    </a>
+                    <a href="login.html" class="nav-item flex flex-col items-center text-gray-400">
+                        <span class="text-xl"><i class="fas fa-user"></i></span>
+                        <span class="text-xs font-medium">My</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Add this before the closing game-container div -->
+            <div class="bg-[#1a1f2e] rounded-xl overflow-hidden mb-4">
+                <div class="p-4 border-b border-gray-800">
+                    <h3 class="text-white font-medium">Record</h3>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-800/50">
+                            <tr>
+                                <th class="py-3 px-4 text-gray-400 font-medium text-left">Period</th>
+                                <th class="py-3 px-4 text-gray-400 font-medium text-center">Number</th>
+                                <th class="py-3 px-4 text-gray-400 font-medium text-center">Big/Small</th>
+                                <th class="py-3 px-4 text-gray-400 font-medium text-center">Color</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recordTableBody">
+                            <!-- Records will be added here dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Color Selection Popup -->
+    <div id="colorPopup" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black bg-opacity-60" onclick="hidePopup()"></div>
+        <div class="fixed inset-x-0 bottom-0 bg-[#1a1f2e] rounded-t-[2rem] overflow-hidden">
+            <div id="popupHeader" class="py-6 text-center text-white">
+                <h2 class="text-2xl font-medium mb-2">Win Go 30Sec</h2>
+                <p class="text-lg font-medium" id="colorSelection">Select Red</p>
+            </div>
+            
+            <!-- Balance Selection -->
+            <div class="px-6 py-3">
+                <div class="text-gray-300 mb-2 text-lg">Balance</div>
+                <div class="grid grid-cols-4 gap-3">
+                    <button onclick="selectBalance(1)" class="balance-btn active bg-red-500 text-white py-2.5 rounded-lg text-lg font-medium transition-colors">1</button>
+                    <button onclick="selectBalance(10)" class="balance-btn bg-[#2c3347] text-white py-2.5 rounded-lg text-lg font-medium transition-colors">10</button>
+                    <button onclick="selectBalance(100)" class="balance-btn bg-[#2c3347] text-white py-2.5 rounded-lg text-lg font-medium transition-colors">100</button>
+                    <button onclick="selectBalance(1000)" class="balance-btn bg-[#2c3347] text-white py-2.5 rounded-lg text-lg font-medium transition-colors">1000</button>
+                </div>
+            </div>
+
+            <!-- Quantity Control -->
+            <div class="px-6 py-3">
+                <div class="text-gray-300 mb-2 text-lg">Quantity</div>
+                <div class="flex items-center justify-between bg-[#2c3347] rounded-lg p-2 mb-3">
+                    <button onclick="updateQuantity('decrease')" class="w-10 h-10 bg-[#1a1f2e] rounded-lg text-white text-2xl font-medium">-</button>
+                    <span class="text-white text-xl font-medium" id="quantityDisplay">1</span>
+                    <button onclick="updateQuantity('increase')" class="w-10 h-10 bg-red-500 rounded-lg text-white text-2xl font-medium">+</button>
+                </div>
+                <div class="grid grid-cols-6 gap-2">
+                    <button onclick="setMultiplier(1)" class="multiplier-btn active bg-red-500 text-white py-2 rounded-lg text-sm font-medium transition-colors">X1</button>
+                    <button onclick="setMultiplier(5)" class="multiplier-btn bg-[#2c3347] text-white py-2 rounded-lg text-sm font-medium transition-colors">X5</button>
+                    <button onclick="setMultiplier(10)" class="multiplier-btn bg-[#2c3347] text-white py-2 rounded-lg text-sm font-medium transition-colors">X10</button>
+                    <button onclick="setMultiplier(20)" class="multiplier-btn bg-[#2c3347] text-white py-2 rounded-lg text-sm font-medium transition-colors">X20</button>
+                    <button onclick="setMultiplier(50)" class="multiplier-btn bg-[#2c3347] text-white py-2 rounded-lg text-sm font-medium transition-colors">X50</button>
+                    <button onclick="setMultiplier(100)" class="multiplier-btn bg-[#2c3347] text-white py-2 rounded-lg text-sm font-medium transition-colors">X100</button>
+                </div>
+            </div>
+
+            <!-- Agreement -->
+            <div class="px-6 py-3 flex items-center gap-3">
+                <input type="checkbox" class="w-5 h-5 accent-red-500" id="agreementCheckbox">
+                <label for="agreementCheckbox" class="text-white text-lg">I agree</label>
+                <button class="text-red-500 text-lg">Pre-sale rules</button>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="grid grid-cols-2 mt-4">
+                <button onclick="hidePopup()" class="bg-[#2c3347] text-white py-4 text-center text-lg font-medium">Cancel</button>
+                <button onclick="submitBet()" class="bg-red-500 text-white py-4 text-center text-lg font-medium">Total Amount <span id="totalAmount">1</span></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add this right before the closing body tag -->
+    <div id="countdownOverlay" class="fixed inset-0 bg-black bg-opacity-90 z-50 hidden flex items-center justify-center">
+        <div class="text-white text-center">
+            <div id="overlayCountdown" class="text-9xl font-bold">5</div>
+        </div>
+    </div>
+
+    <!-- Win Popup -->
+    <div id="winPopup" class="fixed inset-0 bg-black/90 z-50 hidden flex items-center justify-center">
+        <div class="bg-[#1a1f2e] rounded-xl p-6 w-[260px] text-center relative transform transition-transform duration-300 scale-90">
+            <div class="absolute -top-12 left-1/2 -translate-x-1/2">
+                <div class="w-24 h-24 rounded-full bg-gradient-to-r from-orange-500 to-yellow-500 flex items-center justify-center">
+                    <i class="fas fa-gift text-4xl text-white"></i>
+                </div>
+            </div>
+            <h3 class="text-white text-xl font-bold mt-8 mb-2">Congratulations!</h3>
+            <p class="text-gray-400 mb-4">You won ₹<span id="winAmount">0</span></p>
+            <button onclick="hideWinPopup()" class="w-full bg-gradient-to-r from-orange-500 to-yellow-500 text-white py-3 rounded-lg font-bold hover:opacity-90 transition-opacity">
+                Claim
+            </button>
+        </div>
+    </div>
+
+    <!-- Lose Popup -->
+    <div id="losePopup" class="fixed inset-0 bg-black/90 z-50 hidden flex items-center justify-center">
+        <div class="bg-[#1a1f2e] rounded-xl p-6 w-[260px] text-center relative transform transition-transform duration-300 scale-90">
+            <div class="absolute -top-12 left-1/2 -translate-x-1/2">
+                <div class="w-24 h-24 rounded-full bg-gray-800 flex items-center justify-center">
+                    <i class="fas fa-times text-4xl text-gray-400"></i>
+                </div>
+            </div>
+            <h3 class="text-white text-xl font-bold mt-8 mb-2">Better Luck Next Time</h3>
+            <button onclick="hideLosePopup()" class="w-full bg-gray-700 text-white py-3 rounded-lg font-bold hover:opacity-90 transition-opacity">
+                Try Again
+            </button>
+        </div>
+    </div>
+
+    <!-- Amount Input Popup -->
+    <div id="amountPopup" class="fixed inset-0 bg-black/95 z-[55] hidden">
+        <div class="max-w-md mx-auto h-full flex flex-col">
+            <div class="p-4 flex justify-between items-center border-b border-gray-800">
+                <button onclick="hideAmountPopup()" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-arrow-left text-xl"></i>
+                </button>
+                <h2 id="amountPopupTitle" class="text-white text-xl font-bold">Deposit Amount</h2>
+                <div class="w-8"></div>
+            </div>
+            
+            <div class="p-6 flex-1">
+                <!-- Add daily limit info -->
+                <div class="bg-[#252a3c] p-4 rounded-xl mb-4">
+                    <div class="text-gray-400 text-sm mb-1">Daily Limit</div>
+                    <div class="text-white text-sm" id="dailyLimitInfo">
+                        Loading...
+                    </div>
+                </div>
+                
+                <div class="bg-[#1a1f2e] p-4 rounded-xl mb-6">
+                    <div class="text-gray-400 text-sm mb-1">Amount</div>
+                    <div class="text-white text-4xl font-bold">₹<span id="amountInput">0</span></div>
+                </div>
+                
+                <div class="grid grid-cols-3 gap-4">
+                    <button onclick="appendAmount('1')" class="bg-[#1a1f2e] text-white text-2xl font-bold p-4 rounded-xl hover:bg-gray-700">1</button>
+                    <button onclick="appendAmount('2')" class="bg-[#1a1f2e] text-white text-2xl font-bold p-4 rounded-xl hover:bg-gray-700">2</button>
+                    <button onclick="appendAmount('3')" class="bg-[#1a1f2e] text-white text-2xl font-bold p-4 rounded-xl hover:bg-gray-700">3</button>
+                    <button onclick="appendAmount('4')" class="bg-[#1a1f2e] text-white text-2xl font-bold p-4 rounded-xl hover:bg-gray-700">4</button>
+                    <button onclick="appendAmount('5')" class="bg-[#1a1f2e] text-white text-2xl font-bold p-4 rounded-xl hover:bg-gray-700">5</button>
+                    <button onclick="appendAmount('6')" class="bg-[#1a1f2e] text-white text-2xl font-bold p-4 rounded-xl hover:bg-gray-700">6</button>
+                    <button onclick="appendAmount('7')" class="bg-[#1a1f2e] text-white text-2xl font-bold p-4 rounded-xl hover:bg-gray-700">7</button>
+                    <button onclick="appendAmount('8')" class="bg-[#1a1f2e] text-white text-2xl font-bold p-4 rounded-xl hover:bg-gray-700">8</button>
+                    <button onclick="appendAmount('9')" class="bg-[#1a1f2e] text-white text-2xl font-bold p-4 rounded-xl hover:bg-gray-700">9</button>
+                    <button onclick="appendAmount('00')" class="bg-[#1a1f2e] text-white text-2xl font-bold p-4 rounded-xl hover:bg-gray-700">00</button>
+                    <button onclick="appendAmount('0')" class="bg-[#1a1f2e] text-white text-2xl font-bold p-4 rounded-xl hover:bg-gray-700">0</button>
+                    <button onclick="clearAmount()" class="bg-[#1a1f2e] text-white text-xl font-bold p-4 rounded-xl hover:bg-gray-700">
+                        <i class="fas fa-backspace"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="p-4 border-t border-gray-800">
+                <button onclick="processAmount()" class="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl text-lg font-bold hover:opacity-90">
+                    Continue
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Add these variables at the start of your script
+        let walletBalance = 0;
+        let currentAmount = '0';
+        let currentAction = '';
+        let lastPeriodNumber = null;
+        let gameState = {
+            lastPeriod: null,
+            lastResultTime: 0,
+            isShowingResult: false
+        };
+
+        // Bet state management
+        let currentColor = '';
+        let selectedBalance = 1;
+        let currentQuantity = 1;
+        let currentMultiplier = 1;
+        let lastBetType = null;
+        let activeBetConfirmed = false;
+        let currentBet = null;
+        let betProcessed = false;  // Add this to track if bet has been processed
+
+        // Add this function to reset all bet states
+        function resetBetStates() {
+            currentColor = '';
+            selectedNumber = null;
+            selectedSize = null;
+            lastBetType = null;
+            currentBet = null;
+            activeBetConfirmed = false;
+            betProcessed = false;
+        }
+
+        async function placeBet(type, value, amount) {
+            const user = auth.currentUser;
+            if (!user) {
+                showNotification('Please login first', 'warning');
+                return false;
+            }
+
+            if (amount > walletBalance) {
+                showNotification('Insufficient balance! Please add funds.', 'warning');
+                return false;
+            }
+
+            try {
+                // Deduct bet amount first
+                await updateWalletBalance(-amount);
+                betProcessed = false;  // Reset bet processed flag
+                return true;
+            } catch (error) {
+                console.error('Error placing bet:', error);
+                showNotification('Error placing bet', 'error');
+                return false;
+            }
+        }
+
+        async function showResult() {
+            try {
+                const resultOverlay = document.getElementById('resultOverlay');
+                const resultContent = document.getElementById('resultContent');
+                
+                if (!resultOverlay || !resultContent) {
+                    console.error('Result overlay elements not found');
+                    showNotification('Result overlay elements not found', 'error');
+                    return;
+                }
+                
+                console.log('Starting result display process...');
+                
+                // Get the completed period
+                const completedPeriod = await getCompletedPeriod();
+                console.log('Showing result for completed period:', completedPeriod);
+                
+                // Fetch the result directly from the server API with no caching
+                const fetchOptions = {
+                    method: 'GET',
+                    headers: {
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache',
+                        'Expires': '0'
+                    }
+                };
+                
+                console.log('Fetching result from:', getApiUrl('/api/latest-result'));
+                const response = await fetch(getApiUrl('/api/latest-result'), fetchOptions);
+                
+                if (!response.ok) {
+                    console.error('Server returned error:', response.status, response.statusText);
+                    showNotification('Error fetching result from server', 'error');
+                    return;
+                }
+                
+                const result = await response.json();
+                console.log('Raw result from server:', JSON.stringify(result));
+                
+                if (!result || typeof result.number !== 'number') {
+                    console.error('Invalid result format:', result);
+                    showNotification('Invalid result format received from server', 'warning');
+                    return;
+                }
+                
+                // Only process bet if there's a confirmed bet that hasn't been processed
+                if (currentBet && activeBetConfirmed && !betProcessed) {
+                    await processResult(result);
+                    betProcessed = true;  // Mark bet as processed
+                }
+                
+                // Reset bet states after showing result
+                resetBetStates();
+                
+                // Determine the correct color class based on the result
+                let colorClass = '';
+                if (result.color.includes('RED')) {
+                    colorClass = 'bg-red-500';
+                } else if (result.color.includes('GREEN')) {
+                    colorClass = 'bg-green-500';
+                } else if (result.color.includes('VIOLET')) {
+                    colorClass = 'bg-violet-500';
+                }
+                
+                // For number 0, it should always be VIOLET
+                if (result.number === 0) {
+                    colorClass = 'bg-violet-500';
+                }
+                
+                // For number 5, it can be both VIOLET and GREEN
+                if (result.number === 5 && result.color.includes('VIOLET')) {
+                    colorClass = 'bg-violet-500';
+                }
+                
+                console.log('Using color class:', colorClass, 'for color:', result.color);
+                console.log('Final result to display:', {
+                    number: result.number,
+                    size: result.size,
+                    color: result.color,
+                    colorClass: colorClass
+                });
+                
+                // Display result
+                resultContent.innerHTML = `
+                    <div class="text-center">
+                        <h2 class="text-orange-500 text-center text-lg font-medium mb-4">Round Result</h2>
+                        <div class="text-9xl font-bold mb-6 text-white text-shadow">${result.number}</div>
+                        <div class="flex gap-4 justify-center">
+                            <div class="px-6 py-2 rounded-full text-white font-bold ${result.size === 'BIG' ? 'bg-orange-500' : 'bg-violet-500'} shadow-lg">
+                                ${result.size}
+                            </div>
+                            <div class="px-6 py-2 rounded-full text-white font-bold ${colorClass} shadow-lg">
+                                ${result.color}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Ensure the overlay is visible
+                resultOverlay.classList.remove('hidden');
+                resultOverlay.style.display = 'block';
+                
+                // Force an update of the record table
+                updateRecordTable();
+                
+                // Hide after 5 seconds
+                setTimeout(() => {
+                    resultOverlay.classList.add('hidden');
+                    resultOverlay.style.display = 'none';
+                }, 5000);
+            } catch (error) {
+                console.error('Error showing result:', error);
+                showNotification('Error showing result: ' + error.message, 'warning');
+            }
+        }
+
+        async function submitBet() {
+            if (!document.getElementById('agreementCheckbox').checked) {
+                showNotification('Please agree to the Pre-sale rules first', 'warning');
+                return;
+            }
+
+            const betAmount = selectedBalance * currentQuantity * currentMultiplier;
+            let success = false;
+            
+            try {
+                if (lastBetType === 'color' && currentColor) {
+                    success = await placeBet('color', currentColor, betAmount);
+                    if (success) {
+                        currentBet = {
+                            type: 'color',
+                            value: currentColor.toUpperCase(),
+                            amount: betAmount,
+                            multiplier: 2
+                        };
+                    }
+                } else if (lastBetType === 'number' && selectedNumber !== null) {
+                    success = await placeBet('number', selectedNumber, betAmount);
+                    if (success) {
+                        currentBet = {
+                            type: 'number',
+                            value: selectedNumber,
+                            amount: betAmount,
+                            multiplier: 4
+                        };
+                    }
+                } else if (lastBetType === 'size' && selectedSize) {
+                    success = await placeBet('size', selectedSize, betAmount);
+                    if (success) {
+                        currentBet = {
+                            type: 'size',
+                            value: selectedSize.toUpperCase(),
+                            amount: betAmount,
+                            multiplier: 2
+                        };
+                    }
+                }
+
+                if (success && currentBet) {
+                    activeBetConfirmed = true;
+                    betProcessed = false;  // Reset processed flag when placing new bet
+                    showNotification(`Bet placed: ${currentBet.value} for ₹${currentBet.amount}`);
+                    hidePopup();
+                }
+            } catch (error) {
+                console.error('Error placing bet:', error);
+                showNotification('Error placing bet. Please try again.', 'error');
+                resetBetStates();
+            }
+        }
+
+        // Update processResult function
+        async function processResult(result) {
+            const user = auth.currentUser;
+            if (!user || !activeBetConfirmed || !currentBet || betProcessed) {
+                resetBetStates();
+                return;
+            }
+
+            try {
+                let isWin = false;
+
+                switch (currentBet.type) {
+                    case 'color':
+                        isWin = result.color.includes(currentBet.value);
+                        break;
+                    case 'number':
+                        isWin = result.number === parseInt(currentBet.value);
+                        break;
+                    case 'size':
+                        isWin = result.size === currentBet.value;
+                        break;
+                }
+
+                // Save transaction to Firestore
+                const transaction = {
+                    userId: user.uid,
+                    betType: currentBet.type,
+                    betValue: currentBet.value,
+                    betAmount: currentBet.amount,
+                    result: result,
+                    isWin: isWin,
+                    winAmount: 0,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                };
+
+                if (isWin) {
+                    let winAmount = currentBet.amount * currentBet.multiplier;
+                    if (currentBet.value === 'VIOLET' && result.number === 0) {
+                        winAmount *= 2;
+                    }
+
+                    transaction.winAmount = winAmount;
+                    await collections.transactions.add(transaction);
+                    await updateWalletBalance(winAmount);
+                    showWinPopup(winAmount);
+                } else {
+                    await collections.transactions.add(transaction);
+                    showLosePopup();
+                }
+            } catch (error) {
+                console.error('Error processing result:', error);
+                showNotification('Error processing result', 'error');
+            } finally {
+                betProcessed = true;  // Mark bet as processed
+                resetBetStates();
+            }
+        }
+
+        // Add these constants back
+        const MAX_RECORDS = 10; // Number of records to show
+        const DAILY_WITHDRAW_LIMIT = 500;
+        const DAILY_DEPOSIT_LIMIT = 1000;
+
+        // Add timer variables
+        let timerInterval;
+        let countdownTime = 30000; // 30 seconds in milliseconds
+
+        // Add timer functions
+        function showCountdown(seconds) {
+            const countdownOverlay = document.getElementById('countdownOverlay');
+            const overlayCountdown = document.getElementById('overlayCountdown');
+            
+            overlayCountdown.textContent = seconds;
+            countdownOverlay.classList.remove('hidden');
+            
+            // Add scale animation
+            overlayCountdown.classList.add('scale-150');
+            setTimeout(() => {
+                overlayCountdown.classList.remove('scale-150');
+            }, 200);
+            
+            // Hide countdown when it reaches 0
+            if (seconds <= 0) {
+                hideCountdown();
+            }
+        }
+
+        function hideCountdown() {
+            const countdownOverlay = document.getElementById('countdownOverlay');
+            const overlayCountdown = document.getElementById('overlayCountdown');
+            
+            countdownOverlay.classList.add('hidden');
+            overlayCountdown.classList.remove('scale-150');
+        }
+
+        // Add these utility functions for time synchronization
+        let serverTimeOffset = 0;
+        let serverPort = window.location.port || '3000'; // Default to current port or 3000
+        let serverBaseUrl = ''; // Will be set based on server info
+
+        // Get server info including port
+        async function getServerInfo() {
+            try {
+                // First try with relative URL
+                const response = await fetch('/api/server-info');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    serverPort = data.port;
+                    // Update base URL if needed
+                    if (window.location.port !== serverPort.toString()) {
+                        serverBaseUrl = `${window.location.protocol}//${window.location.hostname}:${serverPort}`;
+                        console.log(`Server running on different port: ${serverPort}, using base URL: ${serverBaseUrl}`);
+                    }
+                    return data;
+                }
+            } catch (error) {
+                console.error('Error getting server info:', error);
+                // If relative URL fails, try with explicit localhost URL
+                try {
+                    for (let port = 3000; port < 3010; port++) {
+                        try {
+                            const testUrl = `http://localhost:${port}/api/server-info`;
+                            console.log(`Trying server at ${testUrl}`);
+                            const response = await fetch(testUrl);
+                            
+                            if (response.ok) {
+                                const data = await response.json();
+                                serverPort = data.port;
+                                serverBaseUrl = `http://localhost:${serverPort}`;
+                                console.log(`Found server at port ${serverPort}`);
+                                return data;
+                            }
+                        } catch (innerError) {
+                            // Continue to next port
+                        }
+                    }
+                } catch (fallbackError) {
+                    console.error('Failed to find server on any port:', fallbackError);
+                }
+            }
+            return null;
+        }
+
+        // Helper function to get the correct URL for API endpoints
+        function getApiUrl(endpoint) {
+            if (serverBaseUrl) {
+                return `${serverBaseUrl}${endpoint}`;
+            }
+            return endpoint; // Use relative URL if no base URL is set
+        }
+
+        // Synchronize time with server
+        async function syncTimeWithServer() {
+            try {
+                const startTime = Date.now();
+                const response = await fetch(getApiUrl('/api/time'));
+                const endTime = Date.now();
+                const roundTripTime = endTime - startTime;
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    // Adjust for network latency (half of round trip time)
+                    const serverTime = data.serverTime + (roundTripTime / 2);
+                    serverTimeOffset = serverTime - Date.now();
+                    console.log(`Time synchronized with server. Offset: ${serverTimeOffset}ms`);
+                }
+            } catch (error) {
+                console.error('Error synchronizing time with server:', error);
+            }
+        }
+
+        // Get current time adjusted with server offset
+        function getAdjustedTime() {
+            return new Date(Date.now() + serverTimeOffset);
+        }
+
+        function getTimeUntilNextPeriod() {
+            const now = getAdjustedTime();
+                const seconds = now.getSeconds();
+                const milliseconds = now.getMilliseconds();
+                
+            // Calculate time until next 30-second mark using modulo for precise alignment
+            const timeUntilNext = seconds < 30 ? 
+                30000 - ((seconds * 1000 + milliseconds) % 30000) :
+                60000 - ((seconds * 1000 + milliseconds) % 60000);
+            
+            return timeUntilNext;
+        }
+
+        function getCurrentPeriod() {
+            try {
+                const now = getAdjustedTime();
+                const year = now.getFullYear().toString().slice(-2);
+                const month = (now.getMonth() + 1).toString().padStart(2, '0');
+                const day = now.getDate().toString().padStart(2, '0');
+                const hour = now.getHours().toString().padStart(2, '0');
+                const minute = now.getMinutes().toString().padStart(2, '0');
+                const seconds = now.getSeconds();
+                
+                // Determine if we're in the first or second half of the 30-second period
+                const periodSuffix = seconds < 30 ? '-1' : '-2';
+                
+                // Generate the period number with hyphen
+                const periodNumber = `${year}${month}${day}${hour}${minute}${periodSuffix}`;
+                
+                // Store in localStorage to maintain consistency
+                if (periodNumber !== lastPeriodNumber) {
+                    lastPeriodNumber = periodNumber;
+                    localStorage.setItem('lastPeriodNumber', periodNumber);
+                }
+                
+                return periodNumber;
+            } catch (error) {
+                console.error('Error in getCurrentPeriod:', error);
+                // Return last known period or generate a fallback
+                return localStorage.getItem('lastPeriodNumber') || '240308000-1';
+            }
+        }
+
+        // Update the timer function
+        async function updateTimer() {
+            try {
+                const timeRemaining = getTimeUntilNextPeriod();
+                const remainingSeconds = Math.floor(timeRemaining / 1000);
+                const remainingMillis = Math.floor((timeRemaining % 1000) / 10);
+                
+                // Update timer display
+                const seconds1 = document.getElementById('seconds1');
+                const seconds2 = document.getElementById('seconds2');
+                const millis1 = document.getElementById('millis1');
+                const millis2 = document.getElementById('millis2');
+                
+                if (seconds1) seconds1.textContent = Math.floor(remainingSeconds / 10);
+                if (seconds2) seconds2.textContent = remainingSeconds % 10;
+                if (millis1) millis1.textContent = Math.floor(remainingMillis / 10);
+                if (millis2) millis2.textContent = remainingMillis % 10;
+                
+                // Show countdown overlay for last 5 seconds
+                if (remainingSeconds <= 5 && remainingSeconds > 0) {
+                    showCountdown(remainingSeconds);
+                } else if (remainingSeconds <= 0) {
+                    hideCountdown();
+                    
+                    // Only show result when the period has just ended (within 1 second)
+                    if (remainingMillis <= 50 && !gameState.isShowingResult) {
+                        console.log('Period ended, showing result...');
+                        gameState.isShowingResult = true;
+                        
+                        // Add a small delay to ensure the server has time to generate the result
+                        setTimeout(async () => {
+                            try {
+                        await showResult();
+                            } catch (error) {
+                                console.error('Error showing result:', error);
+                            } finally {
+                        // Reset the flag after showing result
+                        setTimeout(() => {
+                            gameState.isShowingResult = false;
+                        }, 5000);
+                            }
+                        }, 2000); // Wait 2 seconds after period end to fetch result
+                    }
+                }
+            } catch (error) {
+                console.error('Error updating timer:', error);
+                showNotification('Error updating timer', 'warning');
+            }
+        }
+
+        function updatePeriod() {
+            const periodElement = document.getElementById('period');
+            const currentPeriod = getCurrentPeriod();
+            
+            if (periodElement.textContent !== currentPeriod) {
+                periodElement.textContent = currentPeriod;
+            }
+        }
+
+        // Initialize timers with precise interval
+        document.addEventListener('DOMContentLoaded', async () => {
+            document.getElementById('walletBalance').textContent = walletBalance.toFixed(2);
+            
+            // Get server info first
+            await getServerInfo();
+            
+            // Synchronize time with server
+            await syncTimeWithServer();
+            
+            // Start the timer immediately
+            updateTimer();
+            updatePeriod();
+            
+            // Calculate initial delay to sync with system clock
+            const now = new Date();
+            const milliseconds = now.getMilliseconds();
+            const initialDelay = 10 - (milliseconds % 10); // Sync to nearest 10ms boundary
+            
+            // Start interval after initial delay
+            setTimeout(() => {
+            setInterval(() => {
+                updateTimer();
+                updatePeriod();
+                }, 10);
+            }, initialDelay);
+            
+            // Re-sync time with server every minute to maintain accuracy
+            setInterval(syncTimeWithServer, 60000);
+            
+            // Setup Firestore listeners
+            setupRealtimeListeners();
+            
+            // Initial record table update
+            updateRecordTable();
+        });
+
+        // Update getCurrentPeriod function
+        function getCurrentPeriod() {
+            try {
+                const now = getAdjustedTime();
+                const year = now.getFullYear().toString().slice(-2);
+                const month = (now.getMonth() + 1).toString().padStart(2, '0');
+                const day = now.getDate().toString().padStart(2, '0');
+                const hour = now.getHours().toString().padStart(2, '0');
+                const minute = now.getMinutes().toString().padStart(2, '0');
+                const seconds = now.getSeconds();
+                
+                // Determine if we're in the first or second half of the 30-second period
+                const periodSuffix = seconds < 30 ? '-1' : '-2';
+                
+                // Generate the period number with hyphen
+                const periodNumber = `${year}${month}${day}${hour}${minute}${periodSuffix}`;
+                
+                // Store in localStorage to maintain consistency
+                if (periodNumber !== lastPeriodNumber) {
+                    lastPeriodNumber = periodNumber;
+                    localStorage.setItem('lastPeriodNumber', periodNumber);
+                }
+                
+                return periodNumber;
+            } catch (error) {
+                console.error('Error in getCurrentPeriod:', error);
+                // Return last known period or generate a fallback
+                return localStorage.getItem('lastPeriodNumber') || '240308000-1';
+            }
+        }
+
+        // Update getCurrentUser function for Firestore
+        async function getCurrentUser() {
+            const user = auth.currentUser;
+            if (!user) return null;
+            
+            const userDoc = await collections.users.doc(user.uid).get();
+            return userDoc.exists ? userDoc.data() : null;
+        }
+
+        // Update updateUserBalance function for Firestore
+        async function updateUserBalance(userId, newBalance) {
+            await collections.users.doc(userId).update({
+                balance: newBalance
+            });
+        }
+
+        // Update saveGameResult function for Firestore
+        async function saveGameResult(period, result) {
+            try {
+                const user = auth.currentUser;
+                if (!user) {
+                    console.error('No user logged in');
+                    throw new Error('Authentication required');
+                }
+                
+                // Create the game history document
+                const docRef = await collections.gameHistory.add({
+                    period: period,
+                number: result.number,
+                size: result.size,
+                color: result.color,
+                    userId: user.uid,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    createdAt: new Date().toISOString()
+                });
+                
+                console.log('Game result saved with ID:', docRef.id);
+                
+                // Force an immediate update of the record table
+                const snapshot = await collections.gameHistory
+                    .where('userId', '==', user.uid)
+                    .orderBy('timestamp', 'desc')
+                    .limit(10)
+                    .get();
+                
+                await updateRecordTable(snapshot);
+                
+                return docRef;
+            } catch (error) {
+                console.error("Error saving game result:", error);
+                showNotification('Unable to save game result. Please check your connection.', 'warning');
+                throw error;
+            }
+        }
+
+        // Update getDailyTransactions function for Firestore
+        async function getDailyTransactions() {
+            const today = new Date().toDateString();
+            const doc = await collections.dailyTransactions.doc(today).get();
+            return doc.exists ? doc.data() : {
+                withdrawals: 0,
+                deposits: 0
+            };
+        }
+
+        // Update updateDailyTransactions function for Firestore
+        async function updateDailyTransactions(type, amount) {
+            const today = new Date().toDateString();
+            const currentTransactions = await getDailyTransactions();
+            
+            currentTransactions[type] = (parseInt(currentTransactions[type]) || 0) + parseInt(amount);
+            
+            await collections.dailyTransactions.doc(today).set(currentTransactions);
+        }
+
+        // Update updateRecordTable function for Firestore
+        async function updateRecordTable(snapshot = null) {
+            try {
+                const tbody = document.getElementById('recordTableBody');
+                if (!tbody) return;
+                
+                tbody.innerHTML = '';
+                
+                if (!snapshot) {
+                    const user = auth.currentUser;
+                    if (!user) {
+                        showNotification('Please login to view game history', 'warning');
+                        return;
+                    }
+                    
+                    snapshot = await collections.gameHistory
+                        .where('userId', '==', user.uid)
+                    .orderBy('timestamp', 'desc')
+                    .limit(10)
+                    .get();
+                }
+                
+                const gameHistory = [];
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    gameHistory.push({
+                        id: doc.id,
+                        ...data
+                    });
+                });
+                
+                // Sort by timestamp in descending order
+                gameHistory.sort((a, b) => {
+                    const timeA = a.timestamp ? a.timestamp.toDate() : new Date(0);
+                    const timeB = b.timestamp ? b.timestamp.toDate() : new Date(0);
+                    return timeB - timeA;
+                });
+                
+                // Take only the last 10 records
+                const recentHistory = gameHistory.slice(0, 10);
+                
+                recentHistory.forEach(record => {
+                    const row = document.createElement('tr');
+                    row.className = 'border-b border-gray-800/50';
+                    
+                    const colorClass = getColorClass(record.number);
+                    const timestamp = record.timestamp ? new Date(record.timestamp.toDate()).toLocaleTimeString() : '';
+                    
+                    row.innerHTML = `
+                        <td class="py-2 px-4 text-gray-300">${record.period}</td>
+                        <td class="py-2 px-4 text-center">
+                            <span class="inline-flex items-center justify-center w-6 h-6 rounded-full text-white font-medium ${colorClass}">
+                                ${record.number}
+                            </span>
+                        </td>
+                        <td class="py-2 px-4 text-center">
+                            <span class="inline-block px-3 py-1 rounded-full text-xs font-medium ${record.size === 'BIG' ? 'bg-orange-500' : 'bg-violet-500'} text-white">
+                                ${record.size}
+                            </span>
+                        </td>
+                        <td class="py-2 px-4 text-center">
+                            <span class="inline-block w-3 h-3 rounded-full ${colorClass}"></span>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } catch (error) {
+                console.error("Error updating record table:", error);
+                showNotification('Unable to update game history. Please refresh the page.', 'warning');
+            }
+        }
+
+        // Popup State Management
+        let selectedNumber = null;
+        let selectedSize = null;
+
+        function showPopup(color) {
+            const popup = document.getElementById('colorPopup');
+            const popupHeader = document.getElementById('popupHeader');
+            const colorSelection = document.getElementById('colorSelection');
+            const blurContainer = document.querySelector('.blur-container');
+            
+            // Show popup and blur background
+            popup.classList.remove('hidden');
+            blurContainer.classList.add('active');
+            
+            // Reset all bet states when showing popup
+            currentColor = color;
+            lastBetType = 'color';
+            activeBetConfirmed = false;
+            currentBet = null;
+            
+            // Reset other bet types
+            selectedNumber = null;
+            selectedSize = null;
+            
+            let headerColor = '';
+            switch(color) {
+                case 'red':
+                    headerColor = 'bg-red-500';
+                    colorSelection.textContent = 'Select Red';
+                    break;
+                case 'green':
+                    headerColor = 'bg-green-500';
+                    colorSelection.textContent = 'Select Green';
+                    break;
+                case 'violet':
+                    headerColor = 'bg-violet-500';
+                    colorSelection.textContent = 'Select Violet';
+                    break;
+            }
+            
+            popupHeader.className = `py-6 text-center text-white ${headerColor}`;
+            updateTotalAmount();
+        }
+
+        function hidePopup() {
+            const popup = document.getElementById('colorPopup');
+            const blurContainer = document.querySelector('.blur-container');
+            popup.classList.add('hidden');
+            blurContainer.classList.remove('active');
+            
+            // Only reset bet state if it wasn't confirmed
+            if (!activeBetConfirmed) {
+                currentColor = '';
+                selectedNumber = null;
+                selectedSize = null;
+                lastBetType = null;
+                currentBet = null;
+            }
+        }
+
+        function selectBalance(amount) {
+            selectedBalance = amount;
+            document.querySelectorAll('.balance-btn').forEach(btn => {
+                btn.classList.remove('active', 'bg-red-500');
+                btn.classList.add('bg-[#2c3347]');
+            });
+            const activeBtn = document.querySelector(`.balance-btn:nth-child(${Math.log10(amount) + 1})`);
+            activeBtn.classList.add('active', 'bg-red-500');
+            activeBtn.classList.remove('bg-[#2c3347]');
+            updateTotalAmount();
+        }
+
+        function updateQuantity(action) {
+            if (action === 'increase' && currentQuantity < 100) {
+                currentQuantity++;
+            } else if (action === 'decrease' && currentQuantity > 1) {
+                currentQuantity--;
+            }
+            document.getElementById('quantityDisplay').textContent = currentQuantity;
+            updateTotalAmount();
+        }
+
+        function setMultiplier(value) {
+            currentMultiplier = value;
+            document.querySelectorAll('.multiplier-btn').forEach(btn => {
+                btn.classList.remove('active', 'bg-red-500');
+                btn.classList.add('bg-[#2c3347]');
+            });
+            const multiplierMap = {1: 1, 5: 2, 10: 3, 20: 4, 50: 5, 100: 6};
+            const activeBtn = document.querySelector(`.multiplier-btn:nth-child(${multiplierMap[value]})`);
+            activeBtn.classList.add('active', 'bg-red-500');
+            activeBtn.classList.remove('bg-[#2c3347]');
+            updateTotalAmount();
+        }
+
+        function updateTotalAmount() {
+            const total = selectedBalance * currentQuantity * currentMultiplier;
+            document.getElementById('totalAmount').textContent = total;
+        }
+
+        function showNotification(message, type = 'info') {
+            const notification = document.getElementById('notification');
+            const notificationContent = notification.querySelector('.notification-content');
+            const messageEl = document.getElementById('notificationMessage');
+            const iconEl = notification.querySelector('.notification-icon');
+            
+            messageEl.textContent = message;
+            
+            // Reset classes
+            notificationContent.classList.remove(
+                'notification-error',
+                'notification-success',
+                'notification-warning',
+                'notification-info'
+            );
+            notification.classList.remove('notification-shake');
+            
+            // Set type-specific styles
+            switch(type) {
+                case 'error':
+                    notificationContent.classList.add('notification-error');
+                    iconEl.className = 'fas fa-exclamation-circle notification-icon';
+                    notification.classList.add('notification-shake');
+                    break;
+                case 'success':
+                    notificationContent.classList.add('notification-success');
+                    iconEl.className = 'fas fa-check-circle notification-icon';
+                    break;
+                case 'warning':
+                notificationContent.classList.add('notification-warning');
+                iconEl.className = 'fas fa-exclamation-triangle notification-icon';
+                    break;
+                default: // info
+                    notificationContent.classList.add('notification-info');
+                    iconEl.className = 'fas fa-info-circle notification-icon';
+            }
+            
+            // Reset any ongoing animation
+            notification.classList.remove('notification-slide-in');
+            void notification.offsetWidth;
+            
+            // Show notification
+            notification.classList.add('notification-slide-in');
+            
+            // Hide after 3 seconds
+            setTimeout(() => {
+                notification.classList.remove('notification-slide-in');
+            }, 3000);
+        }
+
+        // Add updateWalletBalance function
+        async function updateWalletBalance(amount) {
+            try {
+                const user = auth.currentUser;
+                if (!user) {
+                    showNotification('Please login to continue', 'warning');
+                    return;
+                }
+
+                const userDoc = await collections.users.doc(user.uid).get();
+                if (!userDoc.exists) {
+                    showNotification('Account not found. Please login again.', 'warning');
+                    return;
+                }
+
+                const userData = userDoc.data();
+                const newBalance = (parseFloat(userData.balance) || 0) + amount;
+                
+                await collections.users.doc(user.uid).update({
+                    balance: newBalance
+                });
+                
+                walletBalance = newBalance;
+                document.getElementById('walletBalance').textContent = newBalance.toFixed(2);
+            } catch (error) {
+                console.error('Error updating wallet balance:', error);
+                showNotification('Unable to update balance. Please try again.', 'warning');
+            }
+        }
+
+        // This function is no longer needed as we're fetching directly from the server API in showResult
+        // Keeping it as a fallback in case it's called elsewhere
+        async function generateResult() {
+            console.warn('generateResult is deprecated, use direct API calls instead');
+            try {
+                // Fetch the result directly from the server API with no caching
+                const fetchOptions = {
+                    method: 'GET',
+                    headers: {
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache',
+                        'Expires': '0'
+                    }
+                };
+                
+                console.log('Fetching result from:', getApiUrl('/api/latest-result'));
+                const response = await fetch(getApiUrl('/api/latest-result'), fetchOptions);
+                
+                if (!response.ok) {
+                    console.error('Server returned error:', response.status, response.statusText);
+                    throw new Error(`Server returned error: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                console.log('Raw result from server:', JSON.stringify(result));
+                
+                if (!result || typeof result.number !== 'number') {
+                    console.error('Invalid result format:', result);
+                    throw new Error('Invalid result format received from server');
+                }
+                
+                return result;
+            } catch (error) {
+                console.error('Error fetching result:', error);
+                throw error;
+            }
+        }
+
+        // Helper function to get the completed period for client-side
+        async function getCompletedPeriod() {
+            try {
+                // Make a request to the server to get the completed period
+                const response = await fetch(getApiUrl('/api/server-info'));
+                if (response.ok) {
+                    // Use the server time to calculate the completed period
+                    const data = await response.json();
+                    const serverTime = new Date(data.serverTime);
+                    
+                    // Create a copy of the server time
+                    const completedTime = new Date(serverTime);
+                    
+                    // Adjust the time to the previous period end
+                    const seconds = serverTime.getSeconds();
+                    if (seconds < 30) {
+                        // If we're in the first half of the minute, the completed period was the second half of the previous minute
+                        completedTime.setSeconds(0);
+                        completedTime.setMinutes(completedTime.getMinutes() - 1);
+                        completedTime.setSeconds(30);
+            } else {
+                        // If we're in the second half of the minute, the completed period was the first half of the current minute
+                        completedTime.setSeconds(0);
+                    }
+                    
+                    const year = completedTime.getFullYear().toString().slice(-2);
+                    const month = (completedTime.getMonth() + 1).toString().padStart(2, '0');
+                    const day = completedTime.getDate().toString().padStart(2, '0');
+                    const hour = completedTime.getHours().toString().padStart(2, '0');
+                    const minute = completedTime.getMinutes().toString().padStart(2, '0');
+                    const periodSuffix = completedTime.getSeconds() < 30 ? '-1' : '-2';
+                    
+                    return `${year}${month}${day}${hour}${minute}${periodSuffix}`;
+                } else {
+                    // Fallback to client-side calculation if server request fails
+                    console.warn('Failed to get server time, using client-side calculation');
+                    const now = getAdjustedTime();
+                    
+                    // Create a copy of the current time
+                    const completedTime = new Date(now);
+                    
+                    // Adjust the time to the previous period end
+                    const seconds = now.getSeconds();
+                    if (seconds < 30) {
+                        // If we're in the first half of the minute, the completed period was the second half of the previous minute
+                        completedTime.setSeconds(0);
+                        completedTime.setMinutes(completedTime.getMinutes() - 1);
+                        completedTime.setSeconds(30);
+                    } else {
+                        // If we're in the second half of the minute, the completed period was the first half of the current minute
+                        completedTime.setSeconds(0);
+                    }
+                    
+                    const year = completedTime.getFullYear().toString().slice(-2);
+                    const month = (completedTime.getMonth() + 1).toString().padStart(2, '0');
+                    const day = completedTime.getDate().toString().padStart(2, '0');
+                    const hour = completedTime.getHours().toString().padStart(2, '0');
+                    const minute = completedTime.getMinutes().toString().padStart(2, '0');
+                    const periodSuffix = completedTime.getSeconds() < 30 ? '-1' : '-2';
+                    
+                    return `${year}${month}${day}${hour}${minute}${periodSuffix}`;
+                }
+            } catch (error) {
+                console.error('Error getting completed period:', error);
+                // Fallback to client-side calculation
+                const now = getAdjustedTime();
+                
+                // Create a copy of the current time
+                const completedTime = new Date(now);
+                
+                // Adjust the time to the previous period end
+                const seconds = now.getSeconds();
+                if (seconds < 30) {
+                    // If we're in the first half of the minute, the completed period was the second half of the previous minute
+                    completedTime.setSeconds(0);
+                    completedTime.setMinutes(completedTime.getMinutes() - 1);
+                    completedTime.setSeconds(30);
+                } else {
+                    // If we're in the second half of the minute, the completed period was the first half of the current minute
+                    completedTime.setSeconds(0);
+                }
+                
+                const year = completedTime.getFullYear().toString().slice(-2);
+                const month = (completedTime.getMonth() + 1).toString().padStart(2, '0');
+                const day = completedTime.getDate().toString().padStart(2, '0');
+                const hour = completedTime.getHours().toString().padStart(2, '0');
+                const minute = completedTime.getMinutes().toString().padStart(2, '0');
+                const periodSuffix = completedTime.getSeconds() < 30 ? '-1' : '-2';
+                
+                return `${year}${month}${day}${hour}${minute}${periodSuffix}`;
+            }
+        }
+
+        // Add this function to handle balance refresh
+        function refreshBalance() {
+            checkAndUpdateBalance();
+            showNotification('Balance updated successfully');
+        }
+
+        // Add this function to check and update balance
+        async function checkAndUpdateBalance() {
+            try {
+                const user = auth.currentUser;
+                if (!user) {
+                    showNotification('Please login first', 'warning');
+                    return;
+                }
+
+                const userDoc = await collections.users.doc(user.uid).get();
+                if (userDoc.exists) {
+                    const userData = userDoc.data();
+                    walletBalance = userData.balance || 0;
+                    document.getElementById('walletBalance').textContent = walletBalance.toFixed(2);
+                }
+            } catch (error) {
+                console.error('Error updating balance:', error);
+                showNotification('Error updating balance', 'warning');
+            }
+        }
+
+        // Update showWinPopup function
+        function showWinPopup(amount) {
+            try {
+                const resultOverlay = document.getElementById('resultOverlay');
+                const resultContent = document.getElementById('resultContent');
+                
+                if (!resultOverlay || !resultContent) {
+                    console.error('Result overlay elements not found');
+                    return;
+                }
+                
+                resultContent.innerHTML = `
+                    <div class="text-center">
+                        <div class="w-20 h-20 rounded-full bg-green-500 mx-auto mb-4 flex items-center justify-center">
+                            <i class="fas fa-check-circle text-4xl text-white"></i>
+                        </div>
+                        <h2 class="text-2xl font-bold text-white mb-2">You Won!</h2>
+                        <p class="text-green-500 text-xl font-bold">+₹${amount.toFixed(2)}</p>
+                    </div>
+                `;
+                
+                resultOverlay.classList.remove('hidden');
+                
+                // Hide after 5 seconds
+                setTimeout(() => {
+                    resultOverlay.classList.add('hidden');
+                }, 5000);
+            } catch (error) {
+                console.error('Error showing win popup:', error);
+                showNotification('Error showing win popup', 'warning');
+            }
+        }
+
+        // Update showLosePopup function
+        function showLosePopup() {
+            try {
+                const resultOverlay = document.getElementById('resultOverlay');
+                const resultContent = document.getElementById('resultContent');
+                
+                if (!resultOverlay || !resultContent) {
+                    console.error('Result overlay elements not found');
+                    return;
+                }
+                
+                resultContent.innerHTML = `
+                    <div class="text-center">
+                        <div class="w-20 h-20 rounded-full bg-red-500 mx-auto mb-4 flex items-center justify-center">
+                            <i class="fas fa-times-circle text-4xl text-white"></i>
+                        </div>
+                        <h2 class="text-2xl font-bold text-white mb-2">You Lost</h2>
+                        <p class="text-red-500 text-xl font-bold">Better luck next time!</p>
+                    </div>
+                `;
+                
+                resultOverlay.classList.remove('hidden');
+                
+                // Hide after 5 seconds
+                setTimeout(() => {
+                    resultOverlay.classList.add('hidden');
+                }, 5000);
+            } catch (error) {
+                console.error('Error showing lose popup:', error);
+                showNotification('Error showing lose popup', 'warning');
+            }
+        }
+
+        // Add this function to handle amount popups
+        function showAmountPopup(action) {
+            currentAction = action;
+            currentAmount = '0';
+            document.getElementById('amountInput').textContent = '0';
+            document.getElementById('amountPopupTitle').textContent = `${action.charAt(0).toUpperCase() + action.slice(1)} Amount`;
+            
+            // Show daily limit info
+            const dailyTransactions = getDailyTransactions();
+            const limit = action === 'withdraw' ? DAILY_WITHDRAW_LIMIT : DAILY_DEPOSIT_LIMIT;
+            const used = action === 'withdraw' ? dailyTransactions.withdrawals : dailyTransactions.deposits;
+            const remaining = limit - used;
+            
+            document.getElementById('dailyLimitInfo').innerHTML = `
+                Used today: ₹${used || 0}<br>
+                Remaining: ₹${remaining || limit}<br>
+                Max per day: ₹${limit}
+            `;
+            
+            document.getElementById('amountPopup').classList.remove('hidden');
+        }
+
+        function hideAmountPopup() {
+            document.getElementById('amountPopup').classList.add('hidden');
+            currentAmount = '0';
+            currentAction = '';
+        }
+
+        function appendAmount(num) {
+            if (currentAmount === '0') {
+                currentAmount = num;
+            } else if (currentAmount.length < 6) { // Limit to 6 digits
+                currentAmount += num;
+            }
+            document.getElementById('amountInput').textContent = currentAmount;
+        }
+
+        function clearAmount() {
+            currentAmount = '0';
+            document.getElementById('amountInput').textContent = '0';
+        }
+
+        // Add this function to handle process amount
+        function processAmount() {
+            const amount = parseInt(currentAmount) || 0;
+            
+            if (amount <= 0) {
+                showNotification('Please enter a valid amount', 'warning');
+                return;
+            }
+            
+            const dailyTransactions = getDailyTransactions();
+            
+            if (currentAction === 'withdraw') {
+                if (amount > walletBalance) {
+                    showNotification('Insufficient balance for withdrawal', 'warning');
+                    return;
+                }
+                
+                // Check daily withdrawal limit
+                if ((dailyTransactions.withdrawals || 0) + amount > DAILY_WITHDRAW_LIMIT) {
+                    showNotification(`Daily withdrawal limit (₹${DAILY_WITHDRAW_LIMIT}) exceeded`, 'warning');
+                    return;
+                }
+                
+                updateDailyTransactions('withdrawals', amount);
+            } else if (currentAction === 'deposit') {
+                // Check daily deposit limit
+                if ((dailyTransactions.deposits || 0) + amount > DAILY_DEPOSIT_LIMIT) {
+                    showNotification(`Daily deposit limit (₹${DAILY_DEPOSIT_LIMIT}) exceeded`, 'warning');
+                    return;
+                }
+                
+                updateDailyTransactions('deposits', amount);
+            }
+            
+            // WhatsApp message template
+            const message = `${currentAction.charAt(0).toUpperCase() + currentAction.slice(1)} Request
+Amount: ₹${amount}
+Daily ${currentAction}s: ₹${dailyTransactions[currentAction + 's']}
+Remaining limit: ₹${currentAction === 'withdraw' ? 
+    DAILY_WITHDRAW_LIMIT - dailyTransactions.withdrawals : 
+    DAILY_DEPOSIT_LIMIT - dailyTransactions.deposits}`;
+            
+            const whatsappLink = `https://wa.me/919354835311?text=${encodeURIComponent(message)}`;
+            
+            // Open WhatsApp
+            window.open(whatsappLink, '_blank');
+            hideAmountPopup();
+        }
+
+        // Update the wallet buttons to use the new popup
+        document.querySelector('.wallet-card button:first-of-type').onclick = () => showAmountPopup('withdraw');
+        document.querySelector('.wallet-card button:last-of-type').onclick = () => showAmountPopup('deposit');
+
+        // Add this function to handle color class
+        function getColorClass(number) {
+            if (number === 0) return 'bg-violet-500';
+            return number % 2 === 0 ? 'bg-red-500' : 'bg-green-500';
+        }
+
+        function hideResultOverlay() {
+            const resultOverlay = document.getElementById('resultOverlay');
+            resultOverlay.classList.remove('showing');
+            resultOverlay.classList.add('hidden');
+        }
+
+        // Add this function to handle number betting
+        function betOnNumber(number) {
+            const popup = document.getElementById('colorPopup');
+            const popupHeader = document.getElementById('popupHeader');
+            const colorSelection = document.getElementById('colorSelection');
+            const blurContainer = document.querySelector('.blur-container');
+            
+            // Show popup and blur background
+            popup.classList.remove('hidden');
+            blurContainer.classList.add('active');
+            
+            // Reset all bet states
+            selectedNumber = number;
+            lastBetType = 'number';
+            activeBetConfirmed = false;
+            currentBet = null;
+            currentColor = '';
+            selectedSize = null;
+            
+            const colorClass = getColorClass(number);
+            popupHeader.className = `py-6 text-center text-white ${colorClass}`;
+            colorSelection.textContent = `Select Number ${number}`;
+            updateTotalAmount();
+        }
+
+        // Add this function to handle size betting
+        function betOnSize(size) {
+            const popup = document.getElementById('colorPopup');
+            const popupHeader = document.getElementById('popupHeader');
+            const colorSelection = document.getElementById('colorSelection');
+            const blurContainer = document.querySelector('.blur-container');
+            
+            // Show popup and blur background
+            popup.classList.remove('hidden');
+            blurContainer.classList.add('active');
+            
+            // Reset all bet states
+            selectedSize = size;
+            lastBetType = 'size';
+            activeBetConfirmed = false;
+            currentBet = null;
+            currentColor = '';
+            selectedNumber = null;
+            
+            const headerColor = size === 'big' ? 'bg-orange-500' : 'bg-violet-500';
+            popupHeader.className = `py-6 text-center text-white ${headerColor}`;
+            colorSelection.textContent = `Select ${size.toUpperCase()}`;
+            updateTotalAmount();
+        }
+
+        // Add this function to handle size buttons
+        document.querySelectorAll('.size-btn').forEach(button => {
+            button.onclick = function() {
+                const size = this.dataset.size;
+                betOnSize(size);
+            };
+        });
+    </script>
+</body>
+</html>

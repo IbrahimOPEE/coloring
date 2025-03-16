@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Game UI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Add Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <style>
+        body {
+            background: #1a1f2e;
+        }
+        .user-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+        .user-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(255, 140, 0, 0.5);
+        }
+        #notification {
+            transform: translate(-50%, -150%);
+            transition: transform 0.3s ease;
+        }
+        
+        .slide-in {
+            transform: translate(-50%, 0%) !important;
+        }
+        
+        .notification-warning {
+            background: #2d1c1c !important;
+            border-color: #ef4444 !important;
+        }
+        
+        .notification-warning .notification-icon {
+            color: #ef4444 !important;
+        }
+        
+        .notification-shake {
+            animation: shake 0.82s cubic-bezier(.36,.07,.19,.97) both;
+        }
+        
+        @keyframes shake {
+            10%, 90% { transform: translate(-50%, 0) translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate(-50%, 0) translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate(-50%, 0) translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate(-50%, 0) translate3d(4px, 0, 0); }
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <!-- Add login overlay at the start of body -->
+    <div id="adminLogin" class="fixed inset-0 bg-black/95 z-[70] flex items-center justify-center">
+        <div class="bg-[#252a3c] rounded-xl p-6 w-[320px]">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 rounded-full bg-gradient-to-r from-orange-500 to-orange-600 flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-shield-alt text-2xl text-white"></i>
+                </div>
+                <h2 class="text-xl font-bold text-white">Admin Access</h2>
+                <p class="text-gray-400 text-sm mt-1">Enter password to continue</p>
+            </div>
+            <div class="space-y-4">
+                <div class="bg-gray-800 rounded-lg p-3 border border-gray-700">
+                    <input type="password" id="adminPassword" placeholder="Enter password" 
+                        class="w-full bg-transparent text-white outline-none">
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="rememberAdmin" class="accent-orange-500">
+                    <label class="text-gray-400 text-sm">Remember me for 24 hours</label>
+                </div>
+                <button onclick="checkAdminPassword()" class="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3 rounded-lg font-medium hover:opacity-90">
+                    Login
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Header -->
+    <div class="bg-[#252a3c] border-b border-gray-700">
+        <div class="max-w-6xl mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-gradient-to-r from-orange-500 to-orange-600 flex items-center justify-center">
+                        <i class="fas fa-shield-alt text-white"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-white text-xl font-bold">Admin Panel</h1>
+                        <p class="text-gray-400 text-sm">Manage Users & Balances</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="text-right">
+                        <div class="text-white font-medium">Admin</div>
+                        <div class="text-gray-400 text-sm">Super Admin</div>
+                    </div>
+                    <button onclick="logout()" class="bg-red-500/10 text-red-500 px-4 py-2 rounded-lg hover:bg-red-500/20 transition-colors">
+                        <i class="fas fa-sign-out-alt"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="max-w-6xl mx-auto px-4 py-8">
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-[#252a3c] rounded-xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="text-gray-400">Total Users</div>
+                    <div class="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                        <i class="fas fa-users text-blue-500"></i>
+                    </div>
+                </div>
+                <div class="text-3xl font-bold text-white" id="totalUsers">0</div>
+            </div>
+            <div class="bg-[#252a3c] rounded-xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="text-gray-400">Total Balance</div>
+                    <div class="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
+                        <i class="fas fa-wallet text-green-500"></i>
+                    </div>
+                </div>
+                <div class="text-3xl font-bold text-white">₹<span id="totalBalance">0</span></div>
+            </div>
+            <div class="bg-[#252a3c] rounded-xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="text-gray-400">Active Today</div>
+                    <div class="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                        <i class="fas fa-chart-line text-orange-500"></i>
+                    </div>
+                </div>
+                <div class="text-3xl font-bold text-white" id="activeUsers">0</div>
+            </div>
+        </div>
+
+        <!-- Search and Filter -->
+        <div class="bg-[#252a3c] rounded-xl p-4 mb-8">
+            <div class="flex items-center gap-4">
+                <div class="flex-1 relative">
+                    <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" id="searchInput" placeholder="Search users..." 
+                           class="w-full bg-gray-800 text-white pl-10 pr-4 py-2 rounded-lg outline-none border border-gray-700 focus:border-orange-500">
+                </div>
+                <button onclick="refreshUsers()" class="bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition-colors">
+                    <i class="fas fa-sync-alt mr-2"></i>Refresh
+                </button>
+            </div>
+        </div>
+
+        <!-- Users List -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6" id="usersList">
+            <!-- User cards will be added here dynamically -->
+        </div>
+    </div>
+
+    <!-- Edit Balance Modal -->
+    <div id="editModal" class="fixed inset-0 bg-black/90 z-50 hidden flex items-center justify-center">
+        <div class="bg-[#252a3c] rounded-xl p-6 w-[320px] relative">
+            <button onclick="hideEditModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">
+                <i class="fas fa-times"></i>
+            </button>
+            <h3 class="text-xl font-bold text-white mb-6">Edit Balance</h3>
+            <div class="space-y-4">
+                <div class="user-info text-gray-400"></div>
+                <div class="input-group bg-gray-800 rounded-lg p-3 border border-gray-700">
+                    <label class="text-gray-400 text-sm mb-1 block">New Balance</label>
+                    <input type="number" id="newBalance" class="w-full bg-transparent text-white outline-none" placeholder="Enter amount">
+                </div>
+                <div class="input-group bg-gray-800 rounded-lg p-3 border border-gray-700">
+                    <label class="text-gray-400 text-sm mb-1 block">Note (optional)</label>
+                    <input type="text" id="balanceNote" class="w-full bg-transparent text-white outline-none" placeholder="Enter note">
+                </div>
+                <button onclick="updateBalance()" class="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3 rounded-lg font-medium hover:opacity-90">
+                    Update Balance
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add transaction management modal -->
+    <div id="transactionModal" class="fixed inset-0 bg-black/95 z-[75] hidden">
+        <div class="max-w-md mx-auto mt-20 p-6 bg-[#252a3c] rounded-xl">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-white">Update Transaction</h3>
+                <button onclick="hideTransactionModal()" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="user-info mb-4 pb-4 border-b border-gray-700"></div>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-gray-400 text-sm">Transaction ID</label>
+                    <div id="transactionId" class="text-white"></div>
+                </div>
+                <div>
+                    <label class="text-gray-400 text-sm">Status</label>
+                    <select id="transactionStatus" class="w-full bg-gray-800 text-white px-4 py-2 rounded-lg mt-1 border border-gray-700">
+                        <option value="pending">Pending</option>
+                        <option value="completed">Completed</option>
+                        <option value="failed">Failed</option>
+                    </select>
+                </div>
+                <button onclick="updateTransaction()" class="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3 rounded-lg font-medium">
+                    Update Transaction
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add notification element after the transaction modal -->
+    <div id="notification" class="fixed top-4 left-1/2 -translate-x-1/2 transform transition-all duration-300 z-[100]">
+        <div class="notification-content bg-[#1a1f2e] text-white px-6 py-3 rounded-xl shadow-lg border border-gray-700 flex items-center gap-3 min-w-[280px]">
+            <i class="fas fa-info-circle text-orange-500 notification-icon"></i>
+            <span id="notificationMessage" class="text-sm"></span>
+        </div>
+    </div>
+
+    <script>
+        const ADMIN_PASSWORD = "69420@"; // In a real app, this should be stored securely
+        
+        let currentEditUser = null;
+        let currentTransaction = null;
+
+        // Load and display users
+        async function loadUsers() {
+            const usersList = document.getElementById('usersList');
+            if (!usersList) return;
+
+            const searchTerm = (document.getElementById('searchInput')?.value || '').toLowerCase();
+            
+            try {
+                // Get all users
+                const snapshot = await collections.users.get();
+                const users = [];
+                snapshot.forEach(doc => {
+                    const userData = doc.data() || {};
+                    users.push({
+                        id: doc.id,
+                        name: userData.name || 'No Name',
+                        email: userData.email || 'No Email',
+                        balance: parseFloat(userData.balance) || 0,
+                        lastLogin: userData.lastLogin
+                    });
+                });
+            
+            // Calculate stats
+            document.getElementById('totalUsers').textContent = users.length;
+                document.getElementById('totalBalance').textContent = users.reduce((sum, user) => sum + user.balance, 0).toFixed(2);
+                
+                // Get active users (users who have logged in within the last 24 hours)
+                const oneDayAgo = new Date();
+                oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+                const activeUsers = users.filter(user => user.lastLogin && user.lastLogin.toDate() > oneDayAgo);
+                document.getElementById('activeUsers').textContent = activeUsers.length;
+
+                // Filter users based on search
+                const filteredUsers = users.filter(user => {
+                    return user.name.toLowerCase().includes(searchTerm) || 
+                           user.email.toLowerCase().includes(searchTerm);
+                });
+
+            // Clear and update users list
+            usersList.innerHTML = '';
+            
+                for (const user of filteredUsers) {
+                    // Get recent transactions
+                    const transactionsSnapshot = await collections.transactions
+                        .where('userId', '==', user.id)
+                        .orderBy('timestamp', 'desc')
+                        .limit(3)
+                        .get();
+                    
+                    const transactions = [];
+                    transactionsSnapshot.forEach(doc => {
+                        const transactionData = doc.data() || {};
+                        transactions.push({
+                            id: doc.id,
+                            type: transactionData.type || 'unknown',
+                            amount: parseFloat(transactionData.amount) || 0,
+                            status: transactionData.status || 'pending',
+                            timestamp: transactionData.timestamp
+                        });
+                    });
+                
+                const card = document.createElement('div');
+                card.className = 'user-card p-4 rounded-xl mb-4';
+                
+                let transactionsHtml = '';
+                    if (transactions.length > 0) {
+                    transactionsHtml = `
+                        <div class="mt-4 pt-4 border-t border-gray-700">
+                            <div class="text-gray-400 text-sm mb-2">Recent Transactions</div>
+                            <div class="space-y-2">
+                                    ${transactions.map(t => {
+                                        const type = (t.type || '').toString();
+                                        const status = (t.status || '').toString();
+                                        return `
+                                    <div class="flex items-center justify-between text-sm">
+                                        <div class="flex items-center gap-2">
+                                                    <i class="fas ${type === 'deposit' ? 'fa-download text-green-500' : 'fa-upload text-red-500'}"></i>
+                                                    <span class="text-white">${type.charAt(0).toUpperCase()}${type.slice(1)}</span>
+                                        </div>
+                                        <div class="flex items-center gap-3">
+                                            <span class="text-white">₹${t.amount.toFixed(2)}</span>
+                                                    <button onclick="showTransactionModal('${t.id}')" 
+                                                        class="px-2 py-1 rounded text-xs ${status === 'completed' ? 'bg-green-500/20 text-green-500' : 
+                                                        status === 'failed' ? 'bg-red-500/20 text-red-500' : 'bg-yellow-500/20 text-yellow-500'}">
+                                                        ${status.charAt(0).toUpperCase()}${status.slice(1)}
+                                            </button>
+                                        </div>
+                                    </div>
+                                        `;
+                                    }).join('')}
+                                </div>
+                        </div>
+                    `;
+                }
+                
+                card.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 rounded-full bg-orange-500 flex items-center justify-center">
+                                <i class="fas fa-user text-white"></i>
+                            </div>
+                            <div>
+                                    <div class="text-white font-medium">${user.name}</div>
+                                    <div class="text-gray-400 text-sm">${user.email}</div>
+                                </div>
+                            </div>
+                            <button onclick="showEditModal('${user.id}')" class="bg-gray-800 text-white px-4 py-2 rounded-lg text-sm">
+                            Edit Balance
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4 mt-4">
+                        <div class="bg-gray-800 rounded-lg p-3">
+                            <div class="text-gray-400 text-sm mb-1">Email</div>
+                                <div class="text-white text-sm truncate">${user.email}</div>
+                        </div>
+                        <div class="bg-gray-800 rounded-lg p-3">
+                            <div class="text-gray-400 text-sm mb-1">Balance</div>
+                                <div class="text-white text-sm">₹${user.balance.toFixed(2)}</div>
+                            </div>
+                    </div>
+                    ${transactionsHtml}
+                `;
+                        
+                usersList.appendChild(card);
+                }
+            } catch (error) {
+                console.error('Error loading users:', error);
+                showNotification('Error loading users', 'warning');
+            }
+        }
+
+        // Show edit modal
+        async function showEditModal(userId) {
+            try {
+                const userDoc = await collections.users.doc(userId).get();
+                if (!userDoc.exists) {
+                showNotification('User not found', 'warning');
+                return;
+            }
+
+                const userData = userDoc.data();
+                currentEditUser = {
+                    id: userId,
+                    ...userData
+                };
+            
+            const userInfo = document.querySelector('.user-info');
+            userInfo.innerHTML = `
+                    <div class="text-lg font-medium text-white mb-1">${userData.name || 'No Name'}</div>
+                    <div class="text-sm">Current Balance: ₹${(parseFloat(userData.balance) || 0).toFixed(2)}</div>
+            `;
+
+                document.getElementById('newBalance').value = userData.balance || 0;
+            document.getElementById('editModal').classList.remove('hidden');
+            } catch (error) {
+                console.error('Error showing edit modal:', error);
+                showNotification('Error loading user data', 'warning');
+            }
+        }
+
+        // Hide edit modal
+        function hideEditModal() {
+            document.getElementById('editModal').classList.add('hidden');
+            currentEditUser = null;
+        }
+
+        // Update user balance
+        async function updateBalance() {
+            if (!currentEditUser) return;
+
+            const newBalance = parseFloat(document.getElementById('newBalance').value);
+            if (isNaN(newBalance) || newBalance < 0) {
+                showNotification('Please enter a valid balance amount', 'warning');
+                return;
+            }
+
+            try {
+                const oldBalance = parseFloat(currentEditUser.balance) || 0;
+            const difference = newBalance - oldBalance;
+
+            // Update user balance
+                await collections.users.doc(currentEditUser.id).update({
+                    balance: newBalance
+                });
+
+                // Create transaction if balance changed
+            if (difference !== 0) {
+                    await collections.transactions.add({
+                        userId: currentEditUser.id,
+                        type: difference > 0 ? 'deposit' : 'withdrawal',
+                    amount: Math.abs(difference),
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    status: 'completed',
+                    note: document.getElementById('balanceNote').value || 'Admin balance update'
+                });
+            }
+
+            loadUsers();
+            hideEditModal();
+            showNotification('Balance updated successfully');
+            } catch (error) {
+                console.error('Error updating balance:', error);
+                showNotification('Error updating balance', 'warning');
+            }
+        }
+
+        // Refresh users list
+        function refreshUsers() {
+            loadUsers();
+        }
+
+        // Search functionality
+        document.getElementById('searchInput').addEventListener('input', loadUsers);
+
+        // Admin authentication
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check for remembered login
+            const adminExpiry = localStorage.getItem('adminExpiry');
+            const now = new Date();
+            
+            if (adminExpiry && new Date(adminExpiry) > now) {
+                document.getElementById('adminLogin').style.display = 'none';
+                loadUsers();
+            } else {
+                localStorage.removeItem('adminExpiry');
+                document.getElementById('adminLogin').style.display = 'flex';
+            }
+        });
+
+        // Update admin password check
+        async function checkAdminPassword() {
+            const password = document.getElementById('adminPassword').value;
+            const rememberMe = document.getElementById('rememberAdmin').checked;
+
+            if (password === ADMIN_PASSWORD) {
+                if (rememberMe) {
+                    const expiry = new Date();
+                    expiry.setHours(expiry.getHours() + 24);
+                    localStorage.setItem('adminExpiry', expiry.toISOString());
+                }
+                
+                document.getElementById('adminLogin').style.display = 'none';
+                showNotification('Welcome, Admin!');
+                loadUsers();
+            } else {
+                showNotification('Invalid password', 'warning');
+            }
+        }
+
+        // Update logout function
+        async function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                try {
+                localStorage.removeItem('adminExpiry');
+                    window.location.reload();
+                } catch (error) {
+                    console.error('Error logging out:', error);
+                    showNotification('Error logging out', 'warning');
+                }
+            }
+        }
+
+        // Show transaction modal
+        async function showTransactionModal(transactionId) {
+            try {
+                const transactionDoc = await collections.transactions.doc(transactionId).get();
+                if (!transactionDoc.exists) {
+                    showNotification('Transaction not found', 'warning');
+                    return;
+                }
+
+                const transaction = transactionDoc.data();
+                currentTransaction = {
+                    id: transactionId,
+                    ...transaction
+                };
+
+                const userDoc = await collections.users.doc(transaction.userId).get();
+                const userData = userDoc.exists ? userDoc.data() : { email: 'Unknown User' };
+                
+                const userInfo = document.querySelector('#transactionModal .user-info');
+                if (userInfo) {
+                    userInfo.innerHTML = `
+                        <div class="text-lg font-medium text-white mb-1">${userData.name || userData.email}</div>
+                        <div class="text-sm text-gray-400">
+                            ${(transaction.type || '').charAt(0).toUpperCase() + (transaction.type || '').slice(1)} - 
+                            ₹${(parseFloat(transaction.amount) || 0).toFixed(2)}
+                        </div>
+                    `;
+                }
+                
+                const transactionIdEl = document.getElementById('transactionId');
+                if (transactionIdEl && transaction.timestamp) {
+                    transactionIdEl.textContent = transaction.timestamp.toDate().toLocaleString();
+                } else if (transactionIdEl) {
+                    transactionIdEl.textContent = 'Timestamp not available';
+                }
+
+                const statusSelect = document.getElementById('transactionStatus');
+                if (statusSelect) {
+                    statusSelect.value = transaction.status || 'pending';
+                }
+                
+                document.getElementById('transactionModal').classList.remove('hidden');
+            } catch (error) {
+                console.error('Error showing transaction modal:', error);
+                showNotification('Error loading transaction data', 'warning');
+            }
+        }
+
+        // Update transaction status
+        async function updateTransaction() {
+            if (!currentTransaction) return;
+            
+            try {
+            const newStatus = document.getElementById('transactionStatus').value;
+                
+                // Update transaction status
+                await collections.transactions.doc(currentTransaction.id).update({
+                    status: newStatus
+                });
+
+                // If status changed to completed/failed, update user balance accordingly
+                if (currentTransaction.status !== newStatus && 
+                    (newStatus === 'completed' || newStatus === 'failed')) {
+                    const userDoc = await collections.users.doc(currentTransaction.userId).get();
+                    const userData = userDoc.data();
+                    let newBalance = parseFloat(userData.balance) || 0;
+
+                    if (newStatus === 'completed') {
+                        if (currentTransaction.type === 'deposit') {
+                            newBalance += currentTransaction.amount;
+                        } else {
+                            newBalance -= currentTransaction.amount;
+                        }
+                    }
+
+                    await collections.users.doc(currentTransaction.userId).update({
+                        balance: newBalance
+                    });
+                }
+                
+                hideTransactionModal();
+                loadUsers();
+                showNotification('Transaction updated successfully');
+            } catch (error) {
+                console.error('Error updating transaction:', error);
+                showNotification('Error updating transaction', 'warning');
+            }
+        }
+
+        // Hide transaction modal
+        function hideTransactionModal() {
+            document.getElementById('transactionModal').classList.add('hidden');
+            currentTransaction = null;
+        }
+
+        // Add notification function
+        function showNotification(message, type = 'info') {
+            const notification = document.getElementById('notification');
+            const notificationContent = notification.querySelector('.notification-content');
+            const messageEl = document.getElementById('notificationMessage');
+            const iconEl = notification.querySelector('.notification-icon');
+            
+            messageEl.textContent = message;
+            
+            // Reset classes
+            notificationContent.classList.remove('notification-warning');
+            notification.classList.remove('notification-shake');
+            
+            // Set type-specific styles
+            if (type === 'warning') {
+                notificationContent.classList.add('notification-warning');
+                iconEl.className = 'fas fa-exclamation-triangle notification-icon';
+                notification.classList.add('notification-shake');
+            } else {
+                iconEl.className = 'fas fa-info-circle notification-icon text-orange-500';
+            }
+            
+            // Show notification
+            notification.classList.add('slide-in');
+            
+            // Hide after 3 seconds
+            setTimeout(() => {
+                notification.classList.remove('slide-in');
+            }, 3000);
+        }
+
+        // Add enter key support for password input
+        document.getElementById('adminPassword').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                checkAdminPassword();
+            }
+        });
+    </script>
+</body>
+</html> 

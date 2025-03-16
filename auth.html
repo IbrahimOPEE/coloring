@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authentication</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <style>
+        .notification-slide-in {
+            transform: translate(-50%, 0%) !important;
+        }
+        
+        #notification {
+            transform: translate(-50%, -150%);
+            transition: transform 0.3s ease;
+        }
+        
+        /* Notification types */
+        .notification-error {
+            background: #2d1c1c !important;
+            border-color: #ef4444 !important;
+        }
+        
+        .notification-error .notification-icon {
+            color: #ef4444 !important;
+        }
+        
+        .notification-success {
+            background: #1c2d1c !important;
+            border-color: #22c55e !important;
+        }
+        
+        .notification-success .notification-icon {
+            color: #22c55e !important;
+        }
+        
+        .notification-warning {
+            background: #2d2c1c !important;
+            border-color: #f59e0b !important;
+        }
+        
+        .notification-warning .notification-icon {
+            color: #f59e0b !important;
+        }
+        
+        .notification-info {
+            background: #1c1f2d !important;
+            border-color: #3b82f6 !important;
+        }
+        
+        .notification-info .notification-icon {
+            color: #3b82f6 !important;
+        }
+        
+        .notification-shake {
+            animation: shake 0.82s cubic-bezier(.36,.07,.19,.97) both;
+        }
+        
+        @keyframes shake {
+            10%, 90% { transform: translate(-50%, 0) translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate(-50%, 0) translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate(-50%, 0) translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate(-50%, 0) translate3d(4px, 0, 0); }
+        }
+    </style>
+    <script>
+        // Check if user is already logged in
+        document.addEventListener('DOMContentLoaded', function() {
+            auth.onAuthStateChanged(async function(user) {
+                if (user) {
+                    // Check if user is admin
+                    if (user.email === 'admin@coloringgame.com') {
+                        window.location.replace('admin.html');
+                        return;
+                    }
+                    
+                    // Update UI to show user is logged in
+                    document.getElementById('logoutSection').classList.remove('hidden');
+                    document.getElementById('authForms').classList.add('hidden');
+                    document.getElementById('userEmail').textContent = user.email;
+                } else {
+                    document.getElementById('logoutSection').classList.add('hidden');
+                    document.getElementById('authForms').classList.remove('hidden');
+                }
+            });
+        });
+
+        async function handleLogout() {
+            try {
+                await auth.signOut();
+                // Clear any local data
+                localStorage.clear();
+                sessionStorage.clear();
+                window.location.href = 'auth.html';
+            } catch (error) {
+                showNotification(error.message, 'error');
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-900 min-h-screen flex items-center justify-center">
+    <div class="max-w-md w-full mx-4">
+        <!-- Auth Forms Section -->
+        <div id="authForms">
+        <!-- Login Form -->
+            <div id="loginForm" class="bg-[#1a1f2e] rounded-2xl p-6 mb-4">
+                <h2 class="text-2xl text-white font-bold mb-6 text-center">Login</h2>
+                <form onsubmit="handleLogin(event)">
+                    <div class="mb-4">
+                        <input type="email" id="loginEmail" placeholder="Email" required
+                            class="w-full bg-gray-800 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                    </div>
+                    <div class="mb-6">
+                        <input type="password" id="loginPassword" placeholder="Password" required
+                            class="w-full bg-gray-800 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                    </div>
+                    <button type="submit"
+                        class="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3 rounded-xl font-bold hover:opacity-90 transition-opacity">
+                        Login
+                    </button>
+                </form>
+                <p class="text-center text-gray-400 mt-4">
+                    Don't have an account? 
+                    <button onclick="toggleForms()" class="text-orange-500 hover:underline">Sign Up</button>
+                </p>
+        </div>
+
+            <!-- Sign Up Form -->
+            <div id="signupForm" class="bg-[#1a1f2e] rounded-2xl p-6 mb-4 hidden">
+                <h2 class="text-2xl text-white font-bold mb-6 text-center">Sign Up</h2>
+                <form onsubmit="handleSignup(event)">
+                    <div class="mb-4">
+                        <input type="email" id="signupEmail" placeholder="Email" required
+                            class="w-full bg-gray-800 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                    </div>
+                    <div class="mb-4">
+                        <input type="password" id="signupPassword" placeholder="Password" required
+                            class="w-full bg-gray-800 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                    </div>
+                    <div class="mb-6">
+                        <input type="password" id="confirmPassword" placeholder="Confirm Password" required
+                            class="w-full bg-gray-800 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                    </div>
+                    <button type="submit"
+                        class="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3 rounded-xl font-bold hover:opacity-90 transition-opacity">
+                        Sign Up
+                    </button>
+                </form>
+                <p class="text-center text-gray-400 mt-4">
+                    Already have an account? 
+                    <button onclick="toggleForms()" class="text-orange-500 hover:underline">Login</button>
+                </p>
+            </div>
+        </div>
+
+        <!-- Logout Section -->
+        <div id="logoutSection" class="bg-[#1a1f2e] rounded-2xl p-6 mb-4 hidden">
+            <h2 class="text-2xl text-white font-bold mb-6 text-center">My Account</h2>
+            <div class="text-center text-gray-400 mb-6">
+                Logged in as: <span id="userEmail" class="text-white"></span>
+            </div>
+            <div class="grid gap-4">
+                <a href="index.html" class="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3 rounded-xl font-bold hover:opacity-90 transition-opacity text-center">
+                    Back to Game
+                </a>
+                <button onclick="handleLogout()" class="w-full bg-red-500 text-white py-3 rounded-xl font-bold hover:opacity-90 transition-opacity">
+                    Logout
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification -->
+    <div id="notification" class="fixed top-4 left-1/2 -translate-x-1/2 transform transition-all duration-300 z-[60]">
+        <div class="notification-content bg-[#1a1f2e] text-white px-6 py-3 rounded-xl shadow-lg border border-gray-700 flex items-center gap-3 min-w-[320px]">
+            <i class="notification-icon text-lg"></i>
+            <span id="notificationMessage" class="text-sm font-medium"></span>
+        </div>
+    </div>
+
+    <script>
+        function toggleForms() {
+            document.getElementById('loginForm').classList.toggle('hidden');
+            document.getElementById('signupForm').classList.toggle('hidden');
+        }
+
+        function showNotification(message, type = 'info') {
+            const notification = document.getElementById('notification');
+            const notificationContent = notification.querySelector('.notification-content');
+            const messageEl = document.getElementById('notificationMessage');
+            const iconEl = notification.querySelector('.notification-icon');
+            
+            messageEl.textContent = message;
+            
+            // Reset classes
+            notificationContent.classList.remove(
+                'notification-error',
+                'notification-success',
+                'notification-warning',
+                'notification-info'
+            );
+            notification.classList.remove('notification-shake');
+            
+            // Set type-specific styles
+            switch(type) {
+                case 'error':
+                    notificationContent.classList.add('notification-error');
+                    iconEl.className = 'fas fa-exclamation-circle notification-icon';
+                    notification.classList.add('notification-shake');
+                    break;
+                case 'success':
+                    notificationContent.classList.add('notification-success');
+                    iconEl.className = 'fas fa-check-circle notification-icon';
+                    break;
+                case 'warning':
+                    notificationContent.classList.add('notification-warning');
+                    iconEl.className = 'fas fa-exclamation-triangle notification-icon';
+                    break;
+                default: // info
+                    notificationContent.classList.add('notification-info');
+                    iconEl.className = 'fas fa-info-circle notification-icon';
+            }
+            
+            // Reset any ongoing animation
+            notification.classList.remove('notification-slide-in');
+            void notification.offsetWidth;
+            
+            // Show notification
+            notification.classList.add('notification-slide-in');
+            
+            // Hide after 3 seconds
+            setTimeout(() => {
+                notification.classList.remove('notification-slide-in');
+            }, 3000);
+        }
+
+        async function handleLogin(event) {
+            event.preventDefault();
+            
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            
+            try {
+                const userCredential = await auth.signInWithEmailAndPassword(email, password);
+                const user = userCredential.user;
+                
+                // Check if user document exists
+                const userDoc = await collections.users.doc(user.uid).get();
+                
+                if (!userDoc.exists) {
+                    // Create user document if it doesn't exist
+                    await collections.users.doc(user.uid).set({
+                        email: user.email,
+                        balance: 0,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+                
+                window.location.href = 'index.html';
+            } catch (error) {
+                // Convert Firebase errors to user-friendly messages
+                let errorMessage = 'An error occurred during login. Please try again.';
+                
+                switch (error.code) {
+                    case 'auth/invalid-email':
+                        errorMessage = 'Please enter a valid email address.';
+                        break;
+                    case 'auth/user-disabled':
+                        errorMessage = 'This account has been disabled. Please contact support.';
+                        break;
+                    case 'auth/user-not-found':
+                        errorMessage = 'No account found with this email. Please sign up first.';
+                        break;
+                    case 'auth/wrong-password':
+                        errorMessage = 'Incorrect password. Please try again.';
+                        break;
+                    case 'auth/too-many-requests':
+                        errorMessage = 'Too many failed attempts. Please try again later.';
+                        break;
+                    case 'auth/network-request-failed':
+                        errorMessage = 'Network error. Please check your internet connection.';
+                        break;
+                }
+                
+                showNotification(errorMessage, 'error');
+            }
+        }
+
+        async function handleSignup(event) {
+            event.preventDefault();
+            
+            const email = document.getElementById('signupEmail').value;
+            const password = document.getElementById('signupPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+
+            if (password !== confirmPassword) {
+                showNotification('Passwords do not match', 'error');
+                return;
+            }
+
+            if (password.length < 6) {
+                showNotification('Password must be at least 6 characters long. Please include a mix of letters, numbers, and special characters for better security.', 'warning');
+                return;
+            }
+
+            try {
+                // Create the user account
+                const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                const user = userCredential.user;
+                
+                // Create initial user data
+                await firebase.firestore().collection('users').doc(user.uid).set({
+                    email: user.email,
+                    balance: 0,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    lastLogin: firebase.firestore.FieldValue.serverTimestamp(),
+                    transactions: [],
+                    gameHistory: []
+                });
+                
+                // Create initial daily transactions document
+                const today = new Date().toDateString();
+                await firebase.firestore().collection('dailyTransactions').doc(today).set({
+                    userId: user.uid,
+                    deposits: 0,
+                    withdrawals: 0,
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+                
+                showNotification('Account created successfully! Redirecting...', 'success');
+                setTimeout(() => {
+                    window.location.href = 'index.html';
+                }, 1500);
+            } catch (error) {
+                // Convert Firebase errors to user-friendly messages
+                let errorMessage = 'An error occurred during signup. Please try again.';
+                
+                switch (error.code) {
+                    case 'auth/email-already-in-use':
+                        errorMessage = 'This email is already registered. Please login instead.';
+                        break;
+                    case 'auth/invalid-email':
+                        errorMessage = 'Please enter a valid email address.';
+                        break;
+                    case 'auth/operation-not-allowed':
+                        errorMessage = 'Registration is currently disabled. Please try again later.';
+                        break;
+                    case 'auth/weak-password':
+                        errorMessage = 'Please choose a stronger password.';
+                        break;
+                    case 'auth/network-request-failed':
+                        errorMessage = 'Network error. Please check your internet connection.';
+                        break;
+                }
+                
+                showNotification(errorMessage, 'error');
+            }
+        }
+    </script>
+</body>
+</html> 

@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Game UI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Add Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <style>
+        body {
+            background: #1a1f2e;
+        }
+        .input-group {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .auth-btn {
+            background: linear-gradient(145deg, #ff9f2d, #ff8c00);
+            box-shadow: 0 4px 15px rgba(255, 140, 0, 0.3);
+        }
+        #notification {
+            transform: translate(-50%, -150%);
+            transition: transform 0.3s ease;
+        }
+        
+        .slide-in {
+            transform: translate(-50%, 0%) !important;
+        }
+        
+        .notification-warning {
+            background: #2d1c1c !important;
+            border-color: #ef4444 !important;
+        }
+        
+        .notification-warning .notification-icon {
+            color: #ef4444 !important;
+        }
+        
+        .notification-shake {
+            animation: shake 0.82s cubic-bezier(.36,.07,.19,.97) both;
+        }
+        
+        @keyframes shake {
+            10%, 90% { transform: translate(-50%, 0) translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate(-50%, 0) translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate(-50%, 0) translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate(-50%, 0) translate3d(4px, 0, 0); }
+        }
+        
+        .transaction-tab {
+            transition: all 0.3s ease;
+        }
+        
+        .transaction-tab.active {
+            background: linear-gradient(145deg, #ff9f2d, #ff8c00) !important;
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div class="max-w-md mx-auto p-6">
+        <!-- Profile Icon -->
+        <div class="flex justify-center mb-8 mt-12">
+            <div class="text-center">
+                <div class="w-24 h-24 rounded-full bg-orange-500 flex items-center justify-center mb-3">
+                    <i class="fas fa-user text-4xl text-white"></i>
+                </div>
+                <h2 class="text-white text-xl font-medium" id="userName">Loading...</h2>
+                <p class="text-gray-400 text-sm">Member since <span id="memberSince">2024</span></p>
+            </div>
+        </div>
+
+        <!-- Total Balance Card -->
+        <div class="bg-[#252a3c] rounded-xl p-4 mb-6">
+            <div class="text-center">
+                <div class="text-gray-400 text-sm mb-1">Total Balance</div>
+                <div class="text-2xl font-bold text-white flex items-center justify-center gap-2">
+                    ₹<span id="walletBalance">0.00</span>
+                    <i class="fas fa-sync-alt text-base cursor-pointer"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons Grid -->
+        <div class="grid grid-cols-3 gap-4 mb-8">
+            <button onclick="showAmountPopup('deposit')" class="flex flex-col items-center">
+                <div class="w-12 h-12 rounded-xl bg-orange-500 flex items-center justify-center mb-1">
+                    <i class="fas fa-download text-white"></i>
+                </div>
+                <span class="text-xs text-white">Deposit</span>
+            </button>
+            <button onclick="showAmountPopup('withdraw')" class="flex flex-col items-center">
+                <div class="w-12 h-12 rounded-xl bg-blue-500 flex items-center justify-center mb-1">
+                    <i class="fas fa-upload text-white"></i>
+                </div>
+                <span class="text-xs text-white">Withdraw</span>
+            </button>
+            <button onclick="showChangeNameModal()" class="flex flex-col items-center">
+                <div class="w-12 h-12 rounded-xl bg-purple-500 flex items-center justify-center mb-1">
+                    <i class="fas fa-user-edit text-white"></i>
+                </div>
+                <span class="text-xs text-white">Change Name</span>
+            </button>
+        </div>
+
+        <!-- History Buttons -->
+        <div class="grid grid-cols-2 gap-4 mb-8">
+            <button onclick="showGameHistory()" class="bg-[#252a3c] rounded-xl p-4 flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                    <i class="fas fa-gamepad text-blue-500"></i>
+                </div>
+                <div class="text-left">
+                    <div class="text-white text-sm">Game History</div>
+                    <div class="text-gray-400 text-xs">My History</div>
+                </div>
+            </button>
+            <button onclick="showTransactions()" class="bg-[#252a3c] rounded-xl p-4 flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
+                    <i class="fas fa-exchange-alt text-green-500"></i>
+                </div>
+                <div class="text-left">
+                    <div class="text-white text-sm">Transactions</div>
+                    <div class="text-gray-400 text-xs">My History</div>
+                </div>
+            </button>
+        </div>
+
+        <!-- History Details -->
+        <div class="grid grid-cols-2 gap-4 mb-8">
+            <button onclick="showDepositHistory()" class="bg-[#252a3c] rounded-xl p-4 flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-pink-500/20 flex items-center justify-center">
+                    <i class="fas fa-download text-pink-500"></i>
+                </div>
+                <div class="text-left">
+                    <div class="text-white text-sm">Deposits</div>
+                    <div class="text-gray-400 text-xs">My History</div>
+                </div>
+            </button>
+            <button onclick="showWithdrawalHistory()" class="bg-[#252a3c] rounded-xl p-4 flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                    <i class="fas fa-upload text-orange-500"></i>
+                </div>
+                <div class="text-left">
+                    <div class="text-white text-sm">Withdrawals</div>
+                    <div class="text-gray-400 text-xs">My History</div>
+                </div>
+            </button>
+        </div>
+
+        <!-- Move logout button to end of content, before navigation -->
+        <div class="mt-8 mb-20">
+            <button onclick="logout()" class="w-full bg-[#252a3c] hover:bg-[#2c3347] text-orange-500 rounded-xl py-3 font-medium transition-colors flex items-center justify-center gap-2">
+                <i class="fas fa-sign-out-alt"></i>
+                Logout
+            </button>
+        </div>
+
+        <!-- Navigation -->
+        <div class="fixed bottom-0 left-0 right-0 bg-[#fff] border-t border-gray-800">
+            <div class="max-w-md mx-auto grid grid-cols-4 gap-4 p-3">
+                <a href="index.html" class="nav-item flex flex-col items-center text-gray-400">
+                    <span class="text-xl"><i class="fas fa-home"></i></span>
+                    <span class="text-xs font-medium">Home</span>
+                </a>
+                <a href="#" onclick="showAmountPopup('deposit'); return false;" class="nav-item flex flex-col items-center text-gray-400">
+                    <span class="text-xl"><i class="fas fa-download"></i></span>
+                    <span class="text-xs font-medium">Deposit</span>
+                </a>
+                <a href="#" onclick="showAmountPopup('withdraw'); return false;" class="nav-item flex flex-col items-center text-gray-400">
+                    <span class="text-xl"><i class="fas fa-upload"></i></span>
+                    <span class="text-xs font-medium">Withdraw</span>
+                </a>
+                <a href="login.html" class="nav-item active flex flex-col items-center text-orange-500">
+                    <span class="text-xl"><i class="fas fa-user"></i></span>
+                    <span class="text-xs font-medium">My</span>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add the amount input popup -->
+    <div id="amountPopup" class="fixed inset-0 bg-black/95 z-[55] hidden">
+        <div class="max-w-md mx-auto h-full flex flex-col">
+            <div class="p-4 flex justify-between items-center border-b border-gray-800">
+                <button onclick="hideAmountPopup()" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-arrow-left text-xl"></i>
+                </button>
+                <h2 id="amountPopupTitle" class="text-white text-xl font-bold">Deposit Amount</h2>
+                <div class="w-8"></div>
+            </div>
+            
+            <div class="p-6 flex-1">
+                <!-- Daily limit info -->
+                <div class="bg-[#252a3c] p-4 rounded-xl mb-4">
+                    <div class="text-gray-400 text-sm mb-1">Daily Limit</div>
+                    <div class="text-white text-sm" id="dailyLimitInfo">
+                        Loading...
+                    </div>
+                </div>
+                
+                <div class="bg-[#1a1f2e] p-4 rounded-xl mb-6">
+                    <div class="text-gray-400 text-sm mb-1">Amount</div>
+                    <div class="text-white text-4xl font-bold">₹<span id="amountInput">0</span></div>
+                </div>
+                
+                <!-- Number pad -->
+                <div class="grid grid-cols-3 gap-4">
+                    <button onclick="appendAmount('1')" class="bg-gray-800 text-white rounded-xl p-4 text-xl font-bold hover:bg-gray-700">1</button>
+                    <button onclick="appendAmount('2')" class="bg-gray-800 text-white rounded-xl p-4 text-xl font-bold hover:bg-gray-700">2</button>
+                    <button onclick="appendAmount('3')" class="bg-gray-800 text-white rounded-xl p-4 text-xl font-bold hover:bg-gray-700">3</button>
+                    <button onclick="appendAmount('4')" class="bg-gray-800 text-white rounded-xl p-4 text-xl font-bold hover:bg-gray-700">4</button>
+                    <button onclick="appendAmount('5')" class="bg-gray-800 text-white rounded-xl p-4 text-xl font-bold hover:bg-gray-700">5</button>
+                    <button onclick="appendAmount('6')" class="bg-gray-800 text-white rounded-xl p-4 text-xl font-bold hover:bg-gray-700">6</button>
+                    <button onclick="appendAmount('7')" class="bg-gray-800 text-white rounded-xl p-4 text-xl font-bold hover:bg-gray-700">7</button>
+                    <button onclick="appendAmount('8')" class="bg-gray-800 text-white rounded-xl p-4 text-xl font-bold hover:bg-gray-700">8</button>
+                    <button onclick="appendAmount('9')" class="bg-gray-800 text-white rounded-xl p-4 text-xl font-bold hover:bg-gray-700">9</button>
+                    <button onclick="clearAmount()" class="bg-gray-800 text-white rounded-xl p-4 text-xl font-bold hover:bg-gray-700">C</button>
+                    <button onclick="appendAmount('0')" class="bg-gray-800 text-white rounded-xl p-4 text-xl font-bold hover:bg-gray-700">0</button>
+                    <button onclick="processAmount()" class="bg-orange-500 text-white rounded-xl p-4 text-xl font-bold hover:bg-orange-600">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add notification element -->
+    <div id="notification" class="fixed top-4 left-1/2 -translate-x-1/2 transform transition-all duration-300 z-[100]">
+        <div class="notification-content bg-[#1a1f2e] text-white px-6 py-3 rounded-xl shadow-lg border border-gray-700 flex items-center gap-3 min-w-[280px]">
+            <i class="fas fa-info-circle text-orange-500 notification-icon"></i>
+            <span id="notificationMessage" class="text-sm"></span>
+        </div>
+    </div>
+
+    <!-- Add Game History Popup after the amount popup -->
+    <div id="gameHistoryPopup" class="fixed inset-0 bg-black/95 z-[55] hidden">
+        <div class="max-w-md mx-auto h-full flex flex-col">
+            <div class="p-4 flex justify-between items-center border-b border-gray-800">
+                <button onclick="hideGameHistory()" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-arrow-left text-xl"></i>
+                </button>
+                <h2 class="text-white text-xl font-bold">Game History</h2>
+                <div class="w-8"></div>
+            </div>
+            
+            <div class="p-6 flex-1 overflow-y-auto">
+                <div id="gameHistoryList" class="space-y-4">
+                    <!-- History items will be added here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Transactions History Popup -->
+    <div id="transactionsPopup" class="fixed inset-0 bg-black/95 z-[55] hidden">
+        <div class="max-w-md mx-auto h-full flex flex-col">
+            <div class="p-4 flex justify-between items-center border-b border-gray-800">
+                <button onclick="hideTransactions()" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-arrow-left text-xl"></i>
+                </button>
+                <h2 class="text-white text-xl font-bold">Transactions History</h2>
+                <div class="w-8"></div>
+            </div>
+            
+            <!-- Transaction Type Tabs -->
+            <div class="p-4 border-b border-gray-800">
+                <div class="grid grid-cols-2 gap-4">
+                    <button onclick="showTransactionType('all')" class="transaction-tab active bg-[#252a3c] text-white px-4 py-2 rounded-lg text-sm">
+                        All Transactions
+                    </button>
+                    <button onclick="showTransactionType('deposits')" class="transaction-tab bg-[#252a3c] text-white px-4 py-2 rounded-lg text-sm">
+                        Deposits Only
+                    </button>
+                </div>
+            </div>
+            
+            <div class="p-6 flex-1 overflow-y-auto">
+                <div id="transactionsList" class="space-y-4">
+                    <!-- Transaction items will be added here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Deposit History Popup -->
+    <div id="depositHistoryPopup" class="fixed inset-0 bg-black/95 z-[55] hidden">
+        <div class="max-w-md mx-auto h-full flex flex-col">
+            <div class="p-4 flex justify-between items-center border-b border-gray-800">
+                <button onclick="hideDepositHistory()" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-arrow-left text-xl"></i>
+                </button>
+                <h2 class="text-white text-xl font-bold">Deposit History</h2>
+                <div class="w-8"></div>
+            </div>
+            <div class="p-6 flex-1 overflow-y-auto">
+                <div id="depositHistoryList" class="space-y-4">
+                    <!-- Deposit history items will be added here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Withdrawal History Popup -->
+    <div id="withdrawalHistoryPopup" class="fixed inset-0 bg-black/95 z-[55] hidden">
+        <div class="max-w-md mx-auto h-full flex flex-col">
+            <div class="p-4 flex justify-between items-center border-b border-gray-800">
+                <button onclick="hideWithdrawalHistory()" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-arrow-left text-xl"></i>
+                </button>
+                <h2 class="text-white text-xl font-bold">Withdrawal History</h2>
+                <div class="w-8"></div>
+            </div>
+            <div class="p-6 flex-1 overflow-y-auto">
+                <div id="withdrawalHistoryList" class="space-y-4">
+                    <!-- Withdrawal history items will be added here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Change Name Modal after other modals -->
+    <div id="changeNameModal" class="fixed inset-0 bg-black/95 z-[55] hidden">
+        <div class="max-w-md mx-auto h-full flex flex-col">
+            <div class="p-4 flex justify-between items-center border-b border-gray-800">
+                <button onclick="hideChangeNameModal()" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-arrow-left text-xl"></i>
+                </button>
+                <h2 class="text-white text-xl font-bold">Change Name</h2>
+                <div class="w-8"></div>
+            </div>
+            
+            <div class="p-6">
+                <div class="mb-6">
+                    <div class="text-gray-400 text-sm mb-2">Current Name</div>
+                    <div class="text-white text-lg font-medium" id="currentName">Loading...</div>
+                </div>
+                
+                <div class="space-y-4">
+                    <div class="input-group bg-gray-800 rounded-lg p-3 border border-gray-700">
+                        <label class="text-gray-400 text-sm mb-1 block">New Name</label>
+                        <input type="text" id="newName" class="w-full bg-transparent text-white outline-none" 
+                               placeholder="Enter new name" maxlength="20">
+                    </div>
+                    <button onclick="updateName()" class="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3 rounded-lg font-medium">
+                        Update Name
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Check authentication
+        document.addEventListener('DOMContentLoaded', function() {
+            auth.onAuthStateChanged(async function(user) {
+                if (!user) {
+                    window.location.replace('auth.html');
+                return;
+            }
+            
+                // Get user data from Firestore
+                const userDoc = await collections.users.doc(user.uid).get();
+                if (userDoc.exists) {
+                    const userData = userDoc.data();
+                    document.getElementById('walletBalance').textContent = (userData.balance || 0).toFixed(2);
+                    document.getElementById('userName').textContent = userData.email;
+                    document.getElementById('memberSince').textContent = new Date(userData.createdAt.toDate()).getFullYear();
+                }
+            });
+        });
+
+        // Update logout function
+        async function logout() {
+            try {
+                await auth.signOut();
+                window.location.replace('auth.html');
+            } catch (error) {
+                showNotification(error.message, 'warning');
+            }
+        }
+
+        // Add these constants
+        const DAILY_WITHDRAW_LIMIT = 500;
+        const DAILY_DEPOSIT_LIMIT = 1000;
+        let currentAction = '';
+        let currentAmount = '0';
+        let currentTransactionType = 'all';
+
+        // Add notification function
+        function showNotification(message, type = 'info') {
+            const notification = document.getElementById('notification');
+            const notificationContent = notification.querySelector('.notification-content');
+            const messageEl = document.getElementById('notificationMessage');
+            const iconEl = notification.querySelector('.notification-icon');
+            
+            messageEl.textContent = message;
+            
+            // Reset classes
+            notificationContent.classList.remove('notification-warning');
+            notification.classList.remove('notification-shake');
+            
+            // Set type-specific styles
+            if (type === 'warning') {
+                notificationContent.classList.add('notification-warning');
+                iconEl.className = 'fas fa-exclamation-triangle notification-icon';
+                notification.classList.add('notification-shake');
+            } else {
+                iconEl.className = 'fas fa-info-circle notification-icon text-orange-500';
+            }
+            
+            // Show notification
+            notification.classList.add('slide-in');
+            
+            // Hide after 3 seconds
+            setTimeout(() => {
+                notification.classList.remove('slide-in');
+            }, 3000);
+        }
+
+        // Add amount popup functions
+        function showAmountPopup(action) {
+            currentAction = action;
+            currentAmount = '0';
+            document.getElementById('amountInput').textContent = '0';
+            document.getElementById('amountPopupTitle').textContent = `${action.charAt(0).toUpperCase() + action.slice(1)} Amount`;
+            
+            // Show daily limit info
+            const dailyTransactions = getDailyTransactions();
+            const limit = action === 'withdraw' ? DAILY_WITHDRAW_LIMIT : DAILY_DEPOSIT_LIMIT;
+            const used = action === 'withdraw' ? dailyTransactions.withdrawals : dailyTransactions.deposits;
+            const remaining = limit - used;
+            
+            document.getElementById('dailyLimitInfo').innerHTML = `
+                Used today: ₹${used || 0}<br>
+                Remaining: ₹${remaining || limit}<br>
+                Max per day: ₹${limit}
+            `;
+            
+            document.getElementById('amountPopup').classList.remove('hidden');
+        }
+
+        function hideAmountPopup() {
+            document.getElementById('amountPopup').classList.add('hidden');
+            currentAmount = '0';
+            currentAction = '';
+        }
+
+        function appendAmount(num) {
+            if (currentAmount === '0') {
+                currentAmount = num;
+            } else if (currentAmount.length < 6) {
+                currentAmount += num;
+            }
+            document.getElementById('amountInput').textContent = currentAmount;
+        }
+
+        function clearAmount() {
+            currentAmount = '0';
+            document.getElementById('amountInput').textContent = '0';
+        }
+
+        // Update transaction management functions
+        async function getDailyTransactions() {
+            const today = new Date().toDateString();
+            const doc = await collections.dailyTransactions.doc(today).get();
+            return doc.exists ? doc.data() : {
+                    withdrawals: 0,
+                    deposits: 0
+                };
+        }
+
+        async function updateDailyTransactions(type, amount) {
+            const today = new Date().toDateString();
+            const currentTransactions = await getDailyTransactions();
+            
+            currentTransactions[type] = (parseInt(currentTransactions[type]) || 0) + parseInt(amount);
+            
+            await collections.dailyTransactions.doc(today).set(currentTransactions);
+        }
+
+        async function processAmount() {
+            const amount = parseInt(currentAmount) || 0;
+            const user = auth.currentUser;
+            
+            if (!user) {
+                showNotification('Please login first', 'warning');
+                return;
+            }
+            
+            if (amount <= 0) {
+                showNotification('Please enter a valid amount', 'warning');
+                return;
+            }
+            
+            try {
+                const dailyTransactions = await getDailyTransactions();
+                const userDoc = await collections.users.doc(user.uid).get();
+                const userData = userDoc.data();
+            
+            if (currentAction === 'withdraw') {
+                    if (amount > userData.balance) {
+                    showNotification('Insufficient balance for withdrawal', 'warning');
+                    return;
+                }
+                
+                if ((dailyTransactions.withdrawals || 0) + amount > DAILY_WITHDRAW_LIMIT) {
+                    showNotification(`Daily withdrawal limit (₹${DAILY_WITHDRAW_LIMIT}) exceeded`, 'warning');
+                    return;
+                }
+                
+                    await updateDailyTransactions('withdrawals', amount);
+            } else if (currentAction === 'deposit') {
+                if ((dailyTransactions.deposits || 0) + amount > DAILY_DEPOSIT_LIMIT) {
+                    showNotification(`Daily deposit limit (₹${DAILY_DEPOSIT_LIMIT}) exceeded`, 'warning');
+                    return;
+                }
+                
+                    await updateDailyTransactions('deposits', amount);
+                }
+                
+                // Create transaction record
+                await collections.transactions.add({
+                    userId: user.uid,
+                    type: currentAction,
+                    amount: amount,
+                    status: 'pending',
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            
+            // WhatsApp message template
+            const message = `${currentAction.charAt(0).toUpperCase() + currentAction.slice(1)} Request
+Amount: ₹${amount}
+Daily ${currentAction}s: ₹${dailyTransactions[currentAction + 's']}
+Remaining limit: ₹${currentAction === 'withdraw' ? 
+                DAILY_WITHDRAW_LIMIT - dailyTransactions.withdrawals : 
+                DAILY_DEPOSIT_LIMIT - dailyTransactions.deposits}`;
+            
+            const whatsappLink = `https://wa.me/919354835311?text=${encodeURIComponent(message)}`;
+            window.open(whatsappLink, '_blank');
+            hideAmountPopup();
+                
+            } catch (error) {
+                console.error('Error processing amount:', error);
+                showNotification('Error processing request', 'warning');
+            }
+        }
+
+        // Game History functions
+        function showGameHistory() {
+            loadGameHistory();
+            document.getElementById('gameHistoryPopup').classList.remove('hidden');
+        }
+
+        function hideGameHistory() {
+            document.getElementById('gameHistoryPopup').classList.add('hidden');
+        }
+
+        async function loadGameHistory() {
+            const historyList = document.getElementById('gameHistoryList');
+            if (!historyList) return;
+            
+            const user = auth.currentUser;
+            if (!user) return;
+            
+            try {
+                // Create composite query for proper indexing
+                const query = collections.gameHistory
+                    .where('userId', '==', user.uid)
+                    .orderBy('timestamp', 'desc')
+                    .limit(50);
+
+                const snapshot = await query.get().catch(error => {
+                    if (error.code === 'failed-precondition') {
+                        showNotification('Loading game history...', 'warning');
+                        return null;
+                    }
+                    throw error;
+                });
+
+                if (!snapshot) return;
+                
+            historyList.innerHTML = '';
+            
+                if (snapshot.empty) {
+                historyList.innerHTML = `
+                    <div class="text-center text-gray-400 py-8">
+                        <i class="fas fa-history text-4xl mb-2"></i>
+                        <p>No game history yet</p>
+                    </div>
+                `;
+                return;
+            }
+            
+                snapshot.forEach(doc => {
+                    const item = doc.data() || {};
+                    const date = item.timestamp ? item.timestamp.toDate() : new Date();
+                const card = document.createElement('div');
+                card.className = 'bg-[#252a3c] rounded-xl p-4 mb-4';
+                
+                // Determine result color and icon
+                const resultColor = item.isWin ? 'text-green-500' : 'text-red-500';
+                const resultIcon = item.isWin ? 'fa-check-circle' : 'fa-times-circle';
+                
+                // Handle color display for result
+                let resultColorStyle = '';
+                    const resultData = (item.result || {}).color || '';
+                    if (resultData === 'RED') {
+                    resultColorStyle = 'background-color: #ef4444';
+                    } else if (resultData === 'GREEN') {
+                    resultColorStyle = 'background-color: #22c55e';
+                    } else if (resultData === 'VIOLET') {
+                    resultColorStyle = 'background-color: #8b5cf6';
+                    } else if (resultData === 'VIOLET RED') {
+                    resultColorStyle = 'background: linear-gradient(45deg, #8b5cf6 50%, #ef4444 50%)';
+                }
+                    
+                    const result = item.result || {};
+                    const betAmount = parseFloat(item.betAmount) || 0;
+                    const winAmount = parseFloat(item.winAmount) || 0;
+                
+                card.innerHTML = `
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="text-sm text-gray-400">
+                            ${date.toLocaleDateString()} ${date.toLocaleTimeString()}
+                        </div>
+                        <div class="${resultColor} flex items-center gap-1">
+                            <i class="fas ${resultIcon}"></i>
+                            ${item.isWin ? 'Won' : 'Lost'}
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <div class="text-gray-400">Bet Amount</div>
+                                <div class="text-white">₹${betAmount.toFixed(2)}</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-400">${item.isWin ? 'Won Amount' : 'Lost Amount'}</div>
+                                <div class="text-white">₹${item.isWin ? winAmount.toFixed(2) : betAmount.toFixed(2)}</div>
+                        </div>
+                    </div>
+                    <div class="mt-2 text-sm">
+                        <div class="text-gray-400">Bet Details</div>
+                        <div class="text-white">
+                                ${item.betType === 'color' ? `Color: ${item.betValue || ''}` : 
+                                  item.betType === 'number' ? `Number: ${item.betValue || ''}` : 
+                                  `Size: ${item.betValue || ''}`}
+                        </div>
+                    </div>
+                    <div class="mt-2 text-sm">
+                        <div class="text-gray-400">Result</div>
+                        <div class="text-white flex items-center gap-2">
+                                Number: ${result.number || 0}
+                                <span class="px-2 py-1 rounded text-xs" style="${resultColorStyle}">${result.color || 'Unknown'}</span>
+                                Size: ${result.size || ''}
+                        </div>
+                    </div>
+                `;
+                
+                historyList.appendChild(card);
+            });
+                
+            } catch (error) {
+                console.error('Error loading game history:', error);
+                showNotification('Error loading game history', 'warning');
+            }
+        }
+
+        // Transaction functions
+        function showTransactions() {
+            loadTransactions();
+            document.getElementById('transactionsPopup').classList.remove('hidden');
+        }
+
+        function hideTransactions() {
+            document.getElementById('transactionsPopup').classList.add('hidden');
+        }
+
+        function showTransactionType(type) {
+            currentTransactionType = type;
+            // Update active tab
+            document.querySelectorAll('.transaction-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.currentTarget.classList.add('active');
+            loadTransactions();
+        }
+
+        async function loadTransactions(specificType = null) {
+            const transactionsList = document.getElementById('transactionsList') || 
+                                   document.getElementById('depositHistoryList') || 
+                                   document.getElementById('withdrawalHistoryList');
+            if (!transactionsList) return;
+            
+            const user = auth.currentUser;
+            if (!user) return;
+            
+            try {
+                let query = collections.transactions
+                    .where('userId', '==', user.uid);
+
+                // Handle specific type for deposit/withdrawal history
+                if (specificType) {
+                    query = query.where('type', '==', specificType);
+                } else if (currentTransactionType !== 'all') {
+                    query = query.where('type', '==', currentTransactionType === 'deposits' ? 'deposit' : 'withdrawal');
+                }
+
+                // Add timestamp ordering after where clauses
+                query = query.orderBy('timestamp', 'desc');
+                
+                const snapshot = await query.limit(50).get();
+                
+            transactionsList.innerHTML = '';
+            
+                if (snapshot.empty) {
+                transactionsList.innerHTML = `
+                    <div class="text-center text-gray-400 py-8">
+                        <i class="fas fa-history text-4xl mb-2"></i>
+                        <p>No transactions found</p>
+                    </div>
+                `;
+                return;
+            }
+            
+                snapshot.forEach(doc => {
+                    const item = doc.data() || {};
+                    const date = item.timestamp ? item.timestamp.toDate() : new Date();
+                const card = document.createElement('div');
+                card.className = 'bg-[#252a3c] rounded-xl p-4 mb-4';
+                    
+                    const type = (item.type || '').toString();
+                    const status = (item.status || 'pending').toString();
+                    const amount = parseFloat(item.amount) || 0;
+                
+                let statusColor = 'text-yellow-500';
+                let statusIcon = 'fa-clock';
+                
+                    if (status === 'completed') {
+                    statusColor = 'text-green-500';
+                    statusIcon = 'fa-check-circle';
+                    } else if (status === 'failed') {
+                    statusColor = 'text-red-500';
+                    statusIcon = 'fa-times-circle';
+                }
+                
+                card.innerHTML = `
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="text-sm text-gray-400">
+                            ${date.toLocaleDateString()} ${date.toLocaleTimeString()}
+                        </div>
+                        <div class="${statusColor} flex items-center gap-1">
+                            <i class="fas ${statusIcon}"></i>
+                                ${status.charAt(0).toUpperCase()}${status.slice(1)}
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <div class="text-white font-medium">
+                                    ${type.charAt(0).toUpperCase()}${type.slice(1)}
+                            </div>
+                            <div class="text-sm text-gray-400">
+                                    ${type === 'withdrawal' ? 'Via WhatsApp' : 'To Wallet'}
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-white font-medium">
+                                    ₹${amount.toFixed(2)}
+                            </div>
+                                <div class="text-sm ${type === 'deposit' ? 'text-green-500' : 'text-red-500'}">
+                                    ${type === 'deposit' ? '+' : '-'}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                transactionsList.appendChild(card);
+            });
+                
+            } catch (error) {
+                console.error('Error loading transactions:', error);
+                showNotification('Error loading transactions', 'warning');
+            }
+        }
+
+        // Deposit History functions
+        function showDepositHistory() {
+            loadTransactions('deposit');
+            document.getElementById('depositHistoryPopup').classList.remove('hidden');
+        }
+
+        function hideDepositHistory() {
+            document.getElementById('depositHistoryPopup').classList.add('hidden');
+        }
+
+        // Withdrawal History functions
+        function showWithdrawalHistory() {
+            loadTransactions('withdrawal');
+            document.getElementById('withdrawalHistoryPopup').classList.remove('hidden');
+        }
+
+        function hideWithdrawalHistory() {
+            document.getElementById('withdrawalHistoryPopup').classList.add('hidden');
+        }
+
+        // Name change functions
+        function showChangeNameModal() {
+            const user = auth.currentUser;
+            if (!user) {
+                window.location.href = 'auth.html';
+                return;
+            }
+            
+            document.getElementById('currentName').textContent = user.displayName || user.email || 'No Name';
+            document.getElementById('newName').value = '';
+            document.getElementById('changeNameModal').classList.remove('hidden');
+        }
+
+        function hideChangeNameModal() {
+            document.getElementById('changeNameModal').classList.add('hidden');
+        }
+
+        async function updateName() {
+            const newName = document.getElementById('newName').value.trim();
+            const user = auth.currentUser;
+            
+            if (!user) {
+                showNotification('Please login first', 'warning');
+                return;
+            }
+            
+            if (!newName) {
+                showNotification('Please enter a valid name', 'warning');
+                return;
+            }
+            
+            if (newName.length < 3) {
+                showNotification('Name must be at least 3 characters long', 'warning');
+                return;
+            }
+            
+            try {
+                await collections.users.doc(user.uid).update({
+                    name: newName
+                });
+                
+                document.getElementById('userName').textContent = newName;
+                hideChangeNameModal();
+                showNotification('Name updated successfully');
+                
+            } catch (error) {
+                console.error('Error updating name:', error);
+                showNotification('Error updating name', 'warning');
+            }
+        }
+
+        // Add enter key support for new name input
+        document.getElementById('newName').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                updateName();
+            }
+        });
+    </script>
+</body>
+</html> 
