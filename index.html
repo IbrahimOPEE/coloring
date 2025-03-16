@@ -845,13 +845,24 @@
 
         // Update processResult function
         async function processResult(result) {
+            console.log('Processing result:', result);
+            console.log('Current bet:', currentBet);
+            console.log('Active bet confirmed:', activeBetConfirmed);
+            console.log('Bet processed:', betProcessed);
+            
             const user = auth.currentUser;
             if (!user || !activeBetConfirmed || !currentBet || betProcessed) {
+                console.log('Skipping result processing - conditions not met');
                 resetBetStates();
                 return;
             }
 
             try {
+                console.log('Processing bet result for user:', user.uid);
+                console.log('Bet type:', currentBet.type);
+                console.log('Bet value:', currentBet.value);
+                console.log('Result:', result);
+                
                 let isWin = false;
 
                 switch (currentBet.type) {
@@ -865,6 +876,8 @@
                         isWin = result.size === currentBet.value;
                         break;
                 }
+                
+                console.log('Is win:', isWin);
 
                 // Save transaction to Firestore
                 const transaction = {
@@ -885,12 +898,43 @@
                     }
 
                     transaction.winAmount = winAmount;
-                    await collections.transactions.add(transaction);
-                    await updateWalletBalance(winAmount);
-                    showWinPopup(winAmount);
+                    console.log('Win amount:', winAmount);
+                    
+                    try {
+                        await collections.transactions.add(transaction);
+                        console.log('Transaction saved to Firestore');
+                    } catch (transactionError) {
+                        console.error('Error saving transaction to Firestore:', transactionError);
+                        // Continue even if transaction save fails
+                    }
+                    
+                    try {
+                        await updateWalletBalance(winAmount);
+                        console.log('Wallet balance updated');
+                    } catch (walletError) {
+                        console.error('Error updating wallet balance:', walletError);
+                        // Continue even if wallet update fails
+                    }
+                    
+                    // Show win popup with a slight delay to ensure result is shown first
+                    setTimeout(() => {
+                        console.log('Showing win popup');
+                        showWinPopup(winAmount);
+                    }, 1000);
                 } else {
-                    await collections.transactions.add(transaction);
-                    showLosePopup();
+                    try {
+                        await collections.transactions.add(transaction);
+                        console.log('Transaction saved to Firestore');
+                    } catch (transactionError) {
+                        console.error('Error saving transaction to Firestore:', transactionError);
+                        // Continue even if transaction save fails
+                    }
+                    
+                    // Show lose popup with a slight delay to ensure result is shown first
+                    setTimeout(() => {
+                        console.log('Showing lose popup');
+                        showLosePopup();
+                    }, 1000);
                 }
             } catch (error) {
                 console.error('Error processing result:', error);
@@ -898,282 +942,6 @@
             } finally {
                 betProcessed = true;  // Mark bet as processed
                 resetBetStates();
-            }
-        }
-
-        // Add these constants back
-        const MAX_RECORDS = 10; // Number of records to show
-        const DAILY_WITHDRAW_LIMIT = 500;
-        const DAILY_DEPOSIT_LIMIT = 1000;
-
-        // Add timer variables
-        let timerInterval;
-        let countdownTime = 30000; // 30 seconds in milliseconds
-
-        // Add timer functions
-        function showCountdown(seconds) {
-            const countdownOverlay = document.getElementById('countdownOverlay');
-            const overlayCountdown = document.getElementById('overlayCountdown');
-            
-            overlayCountdown.textContent = seconds;
-            countdownOverlay.classList.remove('hidden');
-            
-            // Add scale animation
-            overlayCountdown.classList.add('scale-150');
-            setTimeout(() => {
-                overlayCountdown.classList.remove('scale-150');
-            }, 200);
-            
-            // Hide countdown when it reaches 0
-            if (seconds <= 0) {
-                hideCountdown();
-            }
-        }
-
-        function hideCountdown() {
-            const countdownOverlay = document.getElementById('countdownOverlay');
-            const overlayCountdown = document.getElementById('overlayCountdown');
-            
-            countdownOverlay.classList.add('hidden');
-            overlayCountdown.classList.remove('scale-150');
-        }
-
-        // Add these utility functions for time synchronization
-        let serverTimeOffset = 0;
-        let serverPort = window.location.port || '3000'; // Default to current port or 3000
-        let serverBaseUrl = ''; // Will be set based on server info
-
-        // Get server info including port
-        async function getServerInfo() {
-            try {
-                console.log('Getting server info...');
-                
-                // Check if we're on Render
-                const isOnRender = window.location.hostname.includes('onrender.com');
-                
-                if (isOnRender) {
-                    // When on Render, use the base URL without port
-                    serverBaseUrl = `${window.location.protocol}//${window.location.hostname}`;
-                    console.log(`Running on Render, using base URL: ${serverBaseUrl}`);
-                    
-                    // Try to get server info
-                    try {
-                        const response = await fetch(`${serverBaseUrl}/api/server-info`);
-                        if (response.ok) {
-                            const data = await response.json();
-                            console.log('Server info received:', data);
-                            return data;
-                        }
-                    } catch (renderError) {
-                        console.error('Error getting server info on Render:', renderError);
-                    }
-                    
-                    // Even if the request fails, return a basic object with the current time
-                    return { serverTime: Date.now() };
-                }
-                
-                // First try with relative URL (for local development)
-                const response = await fetch('/api/server-info');
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    serverPort = data.port;
-                    // Update base URL if needed
-                    if (window.location.port !== serverPort.toString()) {
-                        serverBaseUrl = `${window.location.protocol}//${window.location.hostname}:${serverPort}`;
-                        console.log(`Server running on different port: ${serverPort}, using base URL: ${serverBaseUrl}`);
-                    }
-                    return data;
-                }
-            } catch (error) {
-                console.error('Error getting server info:', error);
-                // If relative URL fails, try with explicit localhost URL
-                try {
-                    for (let port = 3000; port < 3010; port++) {
-                        try {
-                            const testUrl = `http://localhost:${port}/api/server-info`;
-                            console.log(`Trying server at ${testUrl}`);
-                            const response = await fetch(testUrl);
-                            
-                            if (response.ok) {
-                                const data = await response.json();
-                                serverPort = data.port;
-                                serverBaseUrl = `http://localhost:${serverPort}`;
-                                console.log(`Found server at port ${serverPort}`);
-                                return data;
-                            }
-                        } catch (innerError) {
-                            // Continue to next port
-                        }
-                    }
-                } catch (fallbackError) {
-                    console.error('Failed to find server on any port:', fallbackError);
-                }
-            }
-            return { serverTime: Date.now() }; // Return a basic object with the current time as fallback
-        }
-
-        // Helper function to get the correct URL for API endpoints
-        function getApiUrl(endpoint) {
-            // Check if we're on Render
-            const isOnRender = window.location.hostname.includes('onrender.com');
-            
-            if (isOnRender) {
-                // When on Render, use the base URL without port
-                const renderBaseUrl = `${window.location.protocol}//${window.location.hostname}`;
-                console.log(`Using Render base URL for API call: ${renderBaseUrl}${endpoint}`);
-                return `${renderBaseUrl}${endpoint}`;
-            }
-            
-            // For local development
-            if (serverBaseUrl) {
-                console.log(`Using base URL for API call: ${serverBaseUrl}${endpoint}`);
-                return `${serverBaseUrl}${endpoint}`;
-            }
-            
-            console.log(`Using relative URL for API call: ${endpoint}`);
-            return endpoint; // Use relative URL if no base URL is set
-        }
-
-        // Synchronize time with server
-        async function syncTimeWithServer() {
-            try {
-                console.log('Attempting to synchronize time with server...');
-                const startTime = Date.now();
-                
-                // Use a timeout to prevent long-hanging requests
-                const timeoutPromise = new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error('Request timeout')), 5000);
-                });
-                
-                const fetchPromise = fetch(getApiUrl('/api/time'));
-                
-                // Race between fetch and timeout
-                const response = await Promise.race([fetchPromise, timeoutPromise]);
-                const endTime = Date.now();
-                const roundTripTime = endTime - startTime;
-                
-                console.log(`Time sync response received in ${roundTripTime}ms`);
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    // Adjust for network latency (half of round trip time)
-                    const serverTime = data.serverTime + (roundTripTime / 2);
-                    serverTimeOffset = serverTime - Date.now();
-                    console.log(`Time synchronized with server. Server time: ${new Date(serverTime).toISOString()}, Offset: ${serverTimeOffset}ms`);
-                    return true;
-                } else {
-                    console.error(`Server returned error: ${response.status} ${response.statusText}`);
-                    return false;
-                }
-            } catch (error) {
-                console.error('Error synchronizing time with server:', error);
-                
-                // If we're on Render and sync fails, use a small default offset
-                if (window.location.hostname.includes('onrender.com')) {
-                    console.log('Using default time offset for Render deployment');
-                    serverTimeOffset = 0; // No offset, just use client time
-                }
-                
-                return false;
-            }
-        }
-
-        // Get current time adjusted with server offset
-        function getAdjustedTime() {
-            return new Date(Date.now() + serverTimeOffset);
-        }
-
-        function getTimeUntilNextPeriod() {
-            const now = getAdjustedTime();
-                const seconds = now.getSeconds();
-                const milliseconds = now.getMilliseconds();
-                
-            // Calculate time until next 30-second mark using modulo for precise alignment
-            const timeUntilNext = seconds < 30 ? 
-                30000 - ((seconds * 1000 + milliseconds) % 30000) :
-                60000 - ((seconds * 1000 + milliseconds) % 60000);
-            
-            return timeUntilNext;
-        }
-
-        function getCurrentPeriod() {
-            try {
-                const now = getAdjustedTime();
-                const year = now.getFullYear().toString().slice(-2);
-                const month = (now.getMonth() + 1).toString().padStart(2, '0');
-                const day = now.getDate().toString().padStart(2, '0');
-                const hour = now.getHours().toString().padStart(2, '0');
-                const minute = now.getMinutes().toString().padStart(2, '0');
-                const seconds = now.getSeconds();
-                
-                // Determine if we're in the first or second half of the 30-second period
-                const periodSuffix = seconds < 30 ? '-1' : '-2';
-                
-                // Generate the period number with hyphen
-                const periodNumber = `${year}${month}${day}${hour}${minute}${periodSuffix}`;
-                
-                // Store in localStorage to maintain consistency
-                if (periodNumber !== lastPeriodNumber) {
-                    lastPeriodNumber = periodNumber;
-                    localStorage.setItem('lastPeriodNumber', periodNumber);
-                }
-                
-                return periodNumber;
-            } catch (error) {
-                console.error('Error in getCurrentPeriod:', error);
-                // Return last known period or generate a fallback
-                return localStorage.getItem('lastPeriodNumber') || '240308000-1';
-            }
-        }
-
-        // Update the timer function
-        async function updateTimer() {
-            try {
-                const timeRemaining = getTimeUntilNextPeriod();
-                const remainingSeconds = Math.floor(timeRemaining / 1000);
-                const remainingMillis = Math.floor((timeRemaining % 1000) / 10);
-                
-                // Update timer display
-                const seconds1 = document.getElementById('seconds1');
-                const seconds2 = document.getElementById('seconds2');
-                const millis1 = document.getElementById('millis1');
-                const millis2 = document.getElementById('millis2');
-                
-                if (seconds1) seconds1.textContent = Math.floor(remainingSeconds / 10);
-                if (seconds2) seconds2.textContent = remainingSeconds % 10;
-                if (millis1) millis1.textContent = Math.floor(remainingMillis / 10);
-                if (millis2) millis2.textContent = remainingMillis % 10;
-                
-                // Show countdown overlay for last 5 seconds
-                if (remainingSeconds <= 5 && remainingSeconds > 0) {
-                    showCountdown(remainingSeconds);
-                } else if (remainingSeconds <= 0) {
-                    hideCountdown();
-                    
-                    // Only show result when the period has just ended (within 1 second)
-                    if (remainingMillis <= 50 && !gameState.isShowingResult) {
-                        console.log('Period ended, showing result...');
-                        gameState.isShowingResult = true;
-                        
-                        // Add a small delay to ensure the server has time to generate the result
-                        setTimeout(async () => {
-                            try {
-                        await showResult();
-                            } catch (error) {
-                                console.error('Error showing result:', error);
-                            } finally {
-                        // Reset the flag after showing result
-                        setTimeout(() => {
-                            gameState.isShowingResult = false;
-                        }, 5000);
-                            }
-                        }, 2000); // Wait 2 seconds after period end to fetch result
-                    }
-                }
-            } catch (error) {
-                console.error('Error updating timer:', error);
-                showNotification('Error updating timer', 'warning');
             }
         }
 
@@ -1386,33 +1154,73 @@
                 
                 tbody.innerHTML = '';
                 
+                let gameHistory = [];
+                const user = auth.currentUser;
+                
                 if (!snapshot) {
-                    const user = auth.currentUser;
                     if (!user) {
                         showNotification('Please login to view game history', 'warning');
                         return;
                     }
                     
-                    snapshot = await collections.gameHistory
-                        .where('userId', '==', user.uid)
-                    .orderBy('timestamp', 'desc')
-                    .limit(10)
-                    .get();
+                    try {
+                        // First try to get data from Firestore
+                        snapshot = await collections.gameHistory
+                            .where('userId', '==', user.uid)
+                            .orderBy('timestamp', 'desc')
+                            .limit(10)
+                            .get();
+                        
+                        snapshot.forEach(doc => {
+                            const data = doc.data();
+                            gameHistory.push({
+                                id: doc.id,
+                                ...data
+                            });
+                        });
+                    } catch (firestoreError) {
+                        console.error('Error fetching game history from Firestore:', firestoreError);
+                        console.log('Falling back to server API for game history');
+                        
+                        // If Firestore fails, try to get data from server API
+                        try {
+                            const response = await fetch(getApiUrl(`/api/game-history/${user.uid}`));
+                            if (response.ok) {
+                                gameHistory = await response.json();
+                                console.log('Game history fetched from server API:', gameHistory);
+                            } else {
+                                console.error('Server API returned error:', response.status);
+                                showNotification('Unable to fetch game history', 'warning');
+                            }
+                        } catch (apiError) {
+                            console.error('Error fetching game history from server API:', apiError);
+                            showNotification('Unable to fetch game history', 'warning');
+                        }
+                    }
+                } else {
+                    // If snapshot is provided, use it
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        gameHistory.push({
+                            id: doc.id,
+                            ...data
+                        });
+                    });
                 }
                 
-                const gameHistory = [];
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    gameHistory.push({
-                        id: doc.id,
-                        ...data
-                    });
-                });
+                if (gameHistory.length === 0) {
+                    console.log('No game history found');
+                    return;
+                }
                 
                 // Sort by timestamp in descending order
                 gameHistory.sort((a, b) => {
-                    const timeA = a.timestamp ? a.timestamp.toDate() : new Date(0);
-                    const timeB = b.timestamp ? b.timestamp.toDate() : new Date(0);
+                    const timeA = a.timestamp ? 
+                        (a.timestamp.toDate ? a.timestamp.toDate() : new Date(a.timestamp)) : 
+                        new Date(0);
+                    const timeB = b.timestamp ? 
+                        (b.timestamp.toDate ? b.timestamp.toDate() : new Date(b.timestamp)) : 
+                        new Date(0);
                     return timeB - timeA;
                 });
                 
@@ -1424,7 +1232,6 @@
                     row.className = 'border-b border-gray-800/50';
                     
                     const colorClass = getColorClass(record.number);
-                    const timestamp = record.timestamp ? new Date(record.timestamp.toDate()).toLocaleTimeString() : '';
                     
                     row.innerHTML = `
                         <td class="py-2 px-4 text-gray-300">${record.period}</td>
@@ -1444,6 +1251,8 @@
                     `;
                     tbody.appendChild(row);
                 });
+                
+                console.log('Record table updated with', recentHistory.length, 'entries');
             } catch (error) {
                 console.error("Error updating record table:", error);
                 showNotification('Unable to update game history. Please refresh the page.', 'warning');
@@ -2018,6 +1827,109 @@ Remaining limit: ₹${currentAction === 'withdraw' ?
                 betOnSize(size);
             };
         });
+        
+        // Add functions to show win/lose popups
+        function showWinPopup(amount) {
+            try {
+                console.log('Showing win popup with amount:', amount);
+                const winPopup = document.getElementById('winPopup');
+                const winAmount = document.getElementById('winAmount');
+                
+                if (!winPopup || !winAmount) {
+                    console.error('Win popup elements not found');
+                    showNotification('Error showing win popup', 'error');
+                    return;
+                }
+                
+                // Set the win amount
+                winAmount.textContent = amount.toFixed(2);
+                
+                // Show the popup
+                winPopup.classList.remove('hidden');
+                winPopup.style.display = 'flex';
+                
+                // Add animation
+                const popupContent = winPopup.querySelector('div');
+                if (popupContent) {
+                    popupContent.classList.add('scale-100');
+                    popupContent.classList.remove('scale-90');
+                }
+                
+                // Play win sound if available
+                const winSound = document.getElementById('winSound');
+                if (winSound) {
+                    winSound.play().catch(e => console.log('Could not play sound:', e));
+                }
+            } catch (error) {
+                console.error('Error showing win popup:', error);
+                showNotification('Error showing win popup', 'error');
+            }
+        }
+        
+        function hideWinPopup() {
+            const winPopup = document.getElementById('winPopup');
+            if (winPopup) {
+                const popupContent = winPopup.querySelector('div');
+                if (popupContent) {
+                    popupContent.classList.remove('scale-100');
+                    popupContent.classList.add('scale-90');
+                }
+                
+                setTimeout(() => {
+                    winPopup.classList.add('hidden');
+                    winPopup.style.display = 'none';
+                }, 300);
+            }
+        }
+        
+        function showLosePopup() {
+            try {
+                console.log('Showing lose popup');
+                const losePopup = document.getElementById('losePopup');
+                
+                if (!losePopup) {
+                    console.error('Lose popup elements not found');
+                    showNotification('Error showing lose popup', 'error');
+                    return;
+                }
+                
+                // Show the popup
+                losePopup.classList.remove('hidden');
+                losePopup.style.display = 'flex';
+                
+                // Add animation
+                const popupContent = losePopup.querySelector('div');
+                if (popupContent) {
+                    popupContent.classList.add('scale-100');
+                    popupContent.classList.remove('scale-90');
+                }
+                
+                // Play lose sound if available
+                const loseSound = document.getElementById('loseSound');
+                if (loseSound) {
+                    loseSound.play().catch(e => console.log('Could not play sound:', e));
+                }
+            } catch (error) {
+                console.error('Error showing lose popup:', error);
+                showNotification('Error showing lose popup', 'error');
+            }
+        }
+        
+        function hideLosePopup() {
+            const losePopup = document.getElementById('losePopup');
+            if (losePopup) {
+                const popupContent = losePopup.querySelector('div');
+                if (popupContent) {
+                    popupContent.classList.remove('scale-100');
+                    popupContent.classList.add('scale-90');
+                }
+                
+                setTimeout(() => {
+                    losePopup.classList.add('hidden');
+                    losePopup.style.display = 'none';
+                }, 300);
+            }
+        }
     </script>
 </body>
 </html>

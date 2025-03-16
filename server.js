@@ -11,6 +11,8 @@ let serverPort = 3000; // Default port, will be updated when server starts
 // Add a flag to track if Firebase is available
 let isFirebaseAvailable = true;
 let localGameResults = {}; // In-memory storage for results when Firebase is unavailable
+let localGameHistory = []; // In-memory storage for game history when Firebase is unavailable
+let pendingSyncOperations = []; // Queue of operations to sync when Firebase becomes available again
 
 // Function to check if a port is in use
 function isPortInUse(port) {
@@ -95,6 +97,9 @@ async function checkFirebaseConnectivity() {
     if (!isFirebaseAvailable) {
       console.log('Firebase connection restored');
       isFirebaseAvailable = true;
+      
+      // Sync pending operations
+      await syncPendingOperations();
     }
     return true;
   } catch (error) {
@@ -104,6 +109,46 @@ async function checkFirebaseConnectivity() {
     }
     return false;
   }
+}
+
+// Function to sync pending operations when Firebase becomes available
+async function syncPendingOperations() {
+  if (!isFirebaseAvailable || pendingSyncOperations.length === 0) {
+    return;
+  }
+  
+  console.log(`Attempting to sync ${pendingSyncOperations.length} pending operations to Firebase`);
+  
+  const operationsToProcess = [...pendingSyncOperations];
+  pendingSyncOperations = []; // Clear the queue
+  
+  for (const operation of operationsToProcess) {
+    try {
+      if (operation.type === 'gameResult') {
+        // Convert JS Date to Firestore timestamp
+        const resultData = {...operation.data};
+        resultData.timestamp = admin.firestore.Timestamp.fromDate(new Date(resultData.timestamp));
+        
+        await db.collection('gameResults').doc(operation.id).set(resultData);
+        console.log(`Synced game result for period ${operation.id} to Firebase`);
+      } else if (operation.type === 'gameHistory') {
+        // Convert JS Date to Firestore timestamp if needed
+        const historyData = {...operation.data};
+        if (historyData.timestamp) {
+          historyData.timestamp = admin.firestore.Timestamp.fromDate(new Date(historyData.timestamp));
+        }
+        
+        await db.collection('gameHistory').add(historyData);
+        console.log(`Synced game history for user ${historyData.userId} for period ${historyData.period} to Firebase`);
+      }
+    } catch (error) {
+      console.error(`Error syncing operation to Firebase:`, error);
+      // Put the operation back in the queue
+      pendingSyncOperations.push(operation);
+    }
+  }
+  
+  console.log(`Sync completed. ${pendingSyncOperations.length} operations remaining.`);
 }
 
 // Schedule regular checks of Firebase connectivity
@@ -162,11 +207,12 @@ async function generateAndSaveResult(period) {
       color = 'GREEN';
     }
     
+    const timestamp = new Date();
     const result = { 
       number, 
       size, 
       color,
-      timestamp: new Date(),
+      timestamp,
       period
     };
 
@@ -174,8 +220,9 @@ async function generateAndSaveResult(period) {
     if (isFirebaseAvailable) {
       try {
         // Add server timestamp for Firebase
-        result.timestamp = admin.firestore.FieldValue.serverTimestamp();
-        await db.collection('gameResults').doc(period).set(result);
+        const firestoreResult = {...result};
+        firestoreResult.timestamp = admin.firestore.FieldValue.serverTimestamp();
+        await db.collection('gameResults').doc(period).set(firestoreResult);
         console.log(`Result for period ${period} saved to Firebase:`, result);
         
         // Also save to gameHistory collection for all users
@@ -213,14 +260,33 @@ async function generateAndSaveResult(period) {
         console.error(`Error saving result to Firebase for period ${period}:`, saveError);
         // Fall back to local storage
         isFirebaseAvailable = false;
-        result.timestamp = new Date(); // Use JS Date for local storage
         localGameResults[period] = result;
         console.log(`Result for period ${period} saved to local storage:`, result);
+        
+        // Queue the operation for later sync
+        pendingSyncOperations.push({
+          type: 'gameResult',
+          id: period,
+          data: result
+        });
+        
+        // Also save to local game history
+        await saveToLocalGameHistory(result);
       }
     } else {
       // Save to local storage
       localGameResults[period] = result;
       console.log(`Result for period ${period} saved to local storage:`, result);
+      
+      // Queue the operation for later sync
+      pendingSyncOperations.push({
+        type: 'gameResult',
+        id: period,
+        data: result
+      });
+      
+      // Also save to local game history
+      await saveToLocalGameHistory(result);
     }
     
     return result;
@@ -240,17 +306,153 @@ async function generateAndSaveResult(period) {
     // Save fallback to local storage
     localGameResults[period] = fallbackResult;
     
+    // Queue the operation for later sync
+    pendingSyncOperations.push({
+      type: 'gameResult',
+      id: period,
+      data: fallbackResult
+    });
+    
+    // Also save to local game history
+    await saveToLocalGameHistory(fallbackResult);
+    
     console.log(`Generated fallback result for period ${period} due to error:`, fallbackResult);
     return fallbackResult;
   }
 }
 
-// Update API endpoint to get the latest result to use local storage when Firebase is unavailable
+// Function to save to local game history
+async function saveToLocalGameHistory(result) {
+  try {
+    // Try to get users from Firebase if available
+    let users = [];
+    
+    if (isFirebaseAvailable) {
+      try {
+        const usersSnapshot = await db.collection('users').get();
+        usersSnapshot.forEach(userDoc => {
+          users.push(userDoc.id);
+        });
+      } catch (error) {
+        console.error('Error fetching users from Firebase:', error);
+        // If we can't get users, create a default entry
+        users = ['default'];
+      }
+    } else {
+      // If Firebase is unavailable, create a default entry
+      users = ['default'];
+    }
+    
+    // Create history entries for each user
+    for (const userId of users) {
+      const historyData = {
+        period: result.period,
+        number: result.number,
+        size: result.size,
+        color: result.color,
+        userId: userId,
+        timestamp: new Date(),
+        createdAt: new Date().toISOString()
+      };
+      
+      // Add to local history
+      localGameHistory.push(historyData);
+      
+      // Queue for later sync to Firebase
+      pendingSyncOperations.push({
+        type: 'gameHistory',
+        data: historyData
+      });
+    }
+    
+    console.log(`Game history saved locally for period ${result.period}`);
+    return true;
+  } catch (error) {
+    console.error('Error saving to local game history:', error);
+    return false;
+  }
+}
+
+// API endpoint to get game history for a user
+app.get('/api/game-history/:userId', async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    
+    // Check if Firebase is available
+    const firebaseAvailable = await checkFirebaseConnectivity();
+    
+    let historyData = [];
+    
+    if (firebaseAvailable) {
+      try {
+        // Try to get history from Firebase
+        const historySnapshot = await db.collection('gameHistory')
+          .where('userId', '==', userId)
+          .orderBy('timestamp', 'desc')
+          .limit(50)
+          .get();
+        
+        historySnapshot.forEach(doc => {
+          historyData.push(doc.data());
+        });
+      } catch (dbError) {
+        console.error(`Error fetching game history from Firebase for user ${userId}:`, dbError);
+        // Fall back to local storage
+        isFirebaseAvailable = false;
+      }
+    }
+    
+    // If Firebase is unavailable or no data was found, use local history
+    if (!firebaseAvailable || historyData.length === 0) {
+      // Filter local history for this user
+      historyData = localGameHistory
+        .filter(entry => entry.userId === userId || entry.userId === 'default')
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+        .slice(0, 50);
+      
+      console.log(`Using local game history for user ${userId}`);
+    }
+    
+    res.json(historyData);
+  } catch (error) {
+    console.error('Error fetching game history:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// API endpoint to get the latest result
 app.get('/api/latest-result', async (req, res) => {
   try {
-    // Get the most recently completed period
-    const completedPeriod = getCompletedPeriod();
-    const previousCompletedPeriod = getPreviousCompletedPeriod();
+    // Get the current period
+    const now = new Date();
+    const year = now.getFullYear().toString().slice(-2);
+    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+    const day = now.getDate().toString().padStart(2, '0');
+    const hour = now.getHours().toString().padStart(2, '0');
+    const minute = now.getMinutes().toString().padStart(2, '0');
+    const seconds = now.getSeconds();
+    
+    // Determine the completed period
+    let completedPeriod;
+    if (seconds < 30) {
+      // If we're in the first half of the minute, the completed period was the second half of the previous minute
+      const prevMinute = new Date(now);
+      prevMinute.setSeconds(0);
+      prevMinute.setMinutes(prevMinute.getMinutes() - 1);
+      
+      const prevYear = prevMinute.getFullYear().toString().slice(-2);
+      const prevMonth = (prevMinute.getMonth() + 1).toString().padStart(2, '0');
+      const prevDay = prevMinute.getDate().toString().padStart(2, '0');
+      const prevHour = prevMinute.getHours().toString().padStart(2, '0');
+      const prevMinute2 = prevMinute.getMinutes().toString().padStart(2, '0');
+      
+      completedPeriod = `${prevYear}${prevMonth}${prevDay}${prevHour}${prevMinute2}-2`;
+    } else {
+      // If we're in the second half of the minute, the completed period was the first half of the current minute
+      completedPeriod = `${year}${month}${day}${hour}${minute}-1`;
+    }
+    
+    console.log(`Getting result for completed period ${completedPeriod}`);
     
     // Check if Firebase is available
     const firebaseAvailable = await checkFirebaseConnectivity();
@@ -259,72 +461,46 @@ app.get('/api/latest-result', async (req, res) => {
     
     if (firebaseAvailable) {
       try {
-        // Try to get the result for the completed period from Firebase
+        // Try to get result from Firebase
         const resultDoc = await db.collection('gameResults').doc(completedPeriod).get();
         
         if (resultDoc.exists) {
           result = resultDoc.data();
+          console.log(`Result found in Firebase for period ${completedPeriod}:`, result);
         } else {
-          // If no result for the most recent completed period, try the previous period
-          const prevResultDoc = await db.collection('gameResults').doc(previousCompletedPeriod).get();
-          if (prevResultDoc.exists) {
-            result = prevResultDoc.data();
-          }
+          console.log(`No result found in Firebase for period ${completedPeriod}, generating new result`);
+          result = await generateAndSaveResult(completedPeriod);
         }
       } catch (dbError) {
-        console.error('Error fetching result from Firebase:', dbError);
+        console.error(`Error fetching result from Firebase for period ${completedPeriod}:`, dbError);
         // Fall back to local storage
         isFirebaseAvailable = false;
       }
     }
     
-    // If no result from Firebase or Firebase is unavailable, check local storage
-    if (!result) {
+    // If Firebase is unavailable or no result was found, check local storage
+    if (!firebaseAvailable || !result) {
       if (localGameResults[completedPeriod]) {
         result = localGameResults[completedPeriod];
-        console.log(`Using result from local storage for period ${completedPeriod}`);
-      } else if (localGameResults[previousCompletedPeriod]) {
-        result = localGameResults[previousCompletedPeriod];
-        console.log(`Using result from local storage for previous period ${previousCompletedPeriod}`);
+        console.log(`Using result from local storage for period ${completedPeriod}.`);
+      } else {
+        console.log(`No result found in local storage for period ${completedPeriod}, generating new result`);
+        result = await generateAndSaveResult(completedPeriod);
       }
     }
     
-    // If still no result, generate a fallback
-    if (!result) {
-      // Generate a fallback result
+    // Convert Firestore timestamp to regular date if needed
+    if (result && result.timestamp && typeof result.timestamp.toDate === 'function') {
       result = {
-        number: Math.floor(Math.random() * 10),
-        size: Math.floor(Math.random() * 10) >= 5 ? 'BIG' : 'SMALL',
-        color: Math.floor(Math.random() * 10) % 2 === 0 ? 'RED' : 'GREEN',
-        timestamp: new Date(),
-        period: completedPeriod,
-        isFallback: true
+        ...result,
+        timestamp: result.timestamp.toDate()
       };
-      
-      // Save to local storage for future requests
-      localGameResults[completedPeriod] = result;
-      
-      console.log(`Generated fallback result for period ${completedPeriod}:`, result);
     }
     
     res.json(result);
   } catch (error) {
-    console.error('Error fetching latest result:', error);
-    
-    // Generate a fallback result in case of any error
-    const fallbackResult = {
-      number: Math.floor(Math.random() * 10),
-      size: Math.floor(Math.random() * 10) >= 5 ? 'BIG' : 'SMALL',
-      color: Math.floor(Math.random() * 10) % 2 === 0 ? 'RED' : 'GREEN',
-      timestamp: new Date(),
-      isFallback: true
-    };
-    
-    res.status(500).json({ 
-      error: 'Internal server error',
-      message: 'Unable to fetch result',
-      fallback: fallbackResult
-    });
+    console.error('Error getting latest result:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
