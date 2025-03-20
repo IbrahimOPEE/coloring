@@ -6,24 +6,70 @@
     <title>Game UI</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <!-- Firebase SDK -->
+    <!-- Firebase SDK - Fixed URLs -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
-    <script src="firebase-config.js"></script>
+    <!-- Firebase Config - Initialize Firebase -->
+    <script>
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCHaGjJ-t3DCE7xY08C6aV7w35xxjMZpdc",
+            authDomain: "coloring-705b5.firebaseapp.com",
+            projectId: "coloring-705b5",
+            storageBucket: "coloring-705b5.firebasestorage.app",
+            messagingSenderId: "686022960865",
+            appId: "1:686022960865:web:a9a5203d8b7d98f98ab9a0",
+            measurementId: "G-3MZYE1BP0K"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+
+        // Get Firestore reference
+        const db = firebase.firestore();
+
+        // Collection references
+        const collections = {
+            users: db.collection('users'),
+            transactions: db.collection('transactions'),
+            dailyTransactions: db.collection('dailyTransactions'),
+            gameHistory: db.collection('gameHistory'),
+            gameState: db.collection('gameState'),
+            gameResults: db.collection('gameResults')
+        };
+
+        // Auth reference
+        const auth = firebase.auth();
+    </script>
     <script>
         // Define setupRealtimeListeners function early
         function setupRealtimeListeners() {
             const user = auth.currentUser;
             if (!user) {
                 console.error('No user logged in');
+                // Try to get anonymous auth
+                auth.signInAnonymously()
+                    .then(() => {
+                        console.log('Anonymous auth successful in setupRealtimeListeners');
+                        // Call setup again after anonymous auth
+                        setupRealtimeListeners();
+                    })
+                    .catch(error => {
+                        console.error('Error signing in anonymously:', error);
+                        showNotification('Error signing in anonymously. Some features may not work.', 'warning');
+                    });
                 return;
             }
+
+            console.log('Setting up realtime listeners for user:', user.uid);
 
             // Listen for game state changes
             collections.gameState.doc('current').onSnapshot(snapshot => {
                 if (snapshot.exists) {
                     gameState = snapshot.data();
+                    console.log('Game state updated:', gameState);
+                    updateGameUI();
                 }
             }, error => {
                 console.error('Error in game state listener:', error);
@@ -57,29 +103,76 @@
         
         // Add auth check at the start of your script
         document.addEventListener('DOMContentLoaded', function() {
+            // First, try to get the current user
+            const currentUser = auth.currentUser;
+            
+            if (!currentUser) {
+                // If no user is logged in, attempt to sign in anonymously
+                console.log('No user logged in, signing in anonymously...');
+                auth.signInAnonymously()
+                    .then(() => {
+                        console.log('Anonymous auth successful');
+                        // Continue with app initialization
+                        initializeApp();
+                    })
+                    .catch(error => {
+                        console.error('Error signing in anonymously:', error);
+                        showNotification('Error signing in anonymously. Some features may not work.', 'warning');
+                        // Still try to initialize the app
+                        initializeApp();
+                    });
+            } else {
+                // User is already logged in
+                console.log('User already logged in:', currentUser.uid);
+                initializeApp();
+            }
+        });
+
+        // Move the initialization logic to a separate function
+        async function initializeApp() {
             auth.onAuthStateChanged(async function(user) {
                 if (!user) {
-                    window.location.replace('auth.html');
-                    return;
-                }
-                
-                // Get user data from Firestore
-                try {
-                    const userDoc = await collections.users.doc(user.uid).get();
-                    if (userDoc.exists) {
-                        const userData = userDoc.data();
-                        walletBalance = parseFloat(userData.balance) || 0;
-                        document.getElementById('walletBalance').textContent = walletBalance.toFixed(2);
+                    console.log('No user after auth state change, trying anonymous auth again...');
+                    try {
+                        await auth.signInAnonymously();
+                        console.log('Anonymous auth successful');
+                    } catch (error) {
+                        console.error('Error with anonymous auth:', error);
+                        showNotification('Authentication error. Some features may not work.', 'warning');
                     }
-                    // Setup listeners after authentication
-                    setupRealtimeListeners();
-                    // Initial record table update
-                    updateRecordTable();
-                } catch (error) {
-                    console.error('Error loading user data:', error);
+                } else {
+                    console.log('Auth state changed, user is:', user.uid);
+                    // Get user data from Firestore
+                    try {
+                        const userDoc = await collections.users.doc(user.uid).get();
+                        if (userDoc.exists) {
+                            const userData = userDoc.data();
+                            walletBalance = parseFloat(userData.balance) || 0;
+                        } else {
+                            // Create a new user document if it doesn't exist
+                            console.log('Creating new user document for:', user.uid);
+                            await collections.users.doc(user.uid).set({
+                                balance: 0,
+                                isAnonymous: user.isAnonymous,
+                                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                            });
+                            walletBalance = 0;
+                        }
+                        
+                        document.getElementById('walletBalance').textContent = walletBalance.toFixed(2);
+                        
+                        // Setup listeners after authentication
+                        setupRealtimeListeners();
+                        
+                        // Initial record table update
+                        updateRecordTable();
+                    } catch (error) {
+                        console.error('Error loading/creating user data:', error);
+                        showNotification('Error loading user data', 'warning');
+                    }
                 }
             });
-        });
+        }
 
         // Add logout function
         async function handleLogout() {
@@ -93,6 +186,54 @@
                 console.error('Error signing out:', error);
                 showNotification('Unable to sign out. Please try again.', 'warning');
             }
+        }
+
+        // Function to update game UI based on current state
+        function updateGameUI() {
+            if (!gameState) return;
+            
+            // Update countdown timer
+            updateCountdownTimer();
+            
+            // Update game options based on state
+            const gameOptions = document.querySelectorAll('.game-option');
+            gameOptions.forEach(option => {
+                option.classList.remove('active');
+                if (option.dataset.type === gameState.currentGame) {
+                    option.classList.add('active');
+                }
+            });
+            
+            // Update bet amount display
+            const betAmountInput = document.getElementById('betAmount');
+            if (betAmountInput) {
+                betAmountInput.value = gameState.currentBet || '';
+            }
+        }
+
+        // Function to display game result
+        function displayResult(result) {
+            if (!result) return;
+            
+            const resultOverlay = document.getElementById('resultOverlay');
+            if (!resultOverlay) return;
+            
+            // Update result display
+            const resultNumber = document.getElementById('resultNumber');
+            const resultColor = document.getElementById('resultColor');
+            const resultSize = document.getElementById('resultSize');
+            
+            if (resultNumber) resultNumber.textContent = result.number;
+            if (resultColor) resultColor.textContent = result.color;
+            if (resultSize) resultSize.textContent = result.size;
+            
+            // Show result overlay
+            resultOverlay.classList.remove('hidden');
+            
+            // Hide result after 5 seconds
+            setTimeout(() => {
+                resultOverlay.classList.add('hidden');
+            }, 5000);
         }
     </script>
     <style>
@@ -475,7 +616,7 @@
 
     <!-- Win Popup -->
     <div id="winPopup" class="fixed inset-0 bg-black/90 z-50 hidden flex items-center justify-center">
-        <div class="bg-[#1a1f2e] rounded-xl p-6 w-[260px] text-center relative transform transition-transform duration-300 scale-90">
+        <div class="bg-[#1a1f2e] rounded-xl p-6 w-[260px] text-center relative transform transition-transform duration-300 scale-90 win-popup-content">
             <div class="absolute -top-12 left-1/2 -translate-x-1/2">
                 <div class="w-24 h-24 rounded-full bg-gradient-to-r from-orange-500 to-yellow-500 flex items-center justify-center">
                     <i class="fas fa-gift text-4xl text-white"></i>
@@ -491,7 +632,7 @@
 
     <!-- Lose Popup -->
     <div id="losePopup" class="fixed inset-0 bg-black/90 z-50 hidden flex items-center justify-center">
-        <div class="bg-[#1a1f2e] rounded-xl p-6 w-[260px] text-center relative transform transition-transform duration-300 scale-90">
+        <div class="bg-[#1a1f2e] rounded-xl p-6 w-[260px] text-center relative transform transition-transform duration-300 scale-90 lose-popup-content">
             <div class="absolute -top-12 left-1/2 -translate-x-1/2">
                 <div class="w-24 h-24 rounded-full bg-gray-800 flex items-center justify-center">
                     <i class="fas fa-times text-4xl text-gray-400"></i>
@@ -515,12 +656,13 @@
                 <div class="w-8"></div>
             </div>
             
-            <div class="p-6 flex-1">
-                <!-- Add daily limit info -->
+            <div class="p-6 flex-1 overflow-y-auto">
                 <div class="bg-[#252a3c] p-4 rounded-xl mb-4">
-                    <div class="text-gray-400 text-sm mb-1">Daily Limit</div>
-                    <div class="text-white text-sm" id="dailyLimitInfo">
-                        Loading...
+                    <div class="text-gray-400 text-sm mb-1">User Information</div>
+                    <div class="text-white text-sm">
+                        <div id="userInfoDisplay">
+                            <p>Your request will include your user ID and current balance.</p>
+                        </div>
                     </div>
                 </div>
                 
@@ -566,6 +708,12 @@
             lastResultTime: 0,
             isShowingResult: false
         };
+        let accountDetails = {
+            name: '',
+            accountNumber: '',
+            ifscCode: '',
+            upiId: ''
+        };
 
         // Bet state management
         let currentColor = '';
@@ -589,25 +737,37 @@
         }
 
         async function placeBet(type, value, amount) {
+            console.log(`Placing bet: type=${type}, value=${value}, amount=${amount}`);
+            
             const user = auth.currentUser;
             if (!user) {
-                showNotification('Please login first', 'warning');
-                return false;
+                console.log('No user logged in, attempting anonymous sign-in');
+                try {
+                    await auth.signInAnonymously();
+                    console.log('Anonymous sign-in successful');
+                } catch (authError) {
+                    console.error('Anonymous sign-in failed:', authError);
+                    showNotification('Please login first', 'warning');
+                    return false;
+                }
             }
 
             if (amount > walletBalance) {
+                console.log(`Insufficient balance: bet amount ${amount} > wallet balance ${walletBalance}`);
                 showNotification('Insufficient balance! Please add funds.', 'warning');
                 return false;
             }
 
             try {
                 // Deduct bet amount first
+                console.log(`Deducting ${amount} from wallet balance`);
                 await updateWalletBalance(-amount);
                 betProcessed = false;  // Reset bet processed flag
+                console.log('Bet placed successfully');
                 return true;
             } catch (error) {
                 console.error('Error placing bet:', error);
-                showNotification('Error placing bet', 'error');
+                showNotification('Error placing bet: ' + error.message, 'error');
                 return false;
             }
         }
@@ -629,101 +789,137 @@
                 const completedPeriod = await getCompletedPeriod();
                 console.log('Showing result for completed period:', completedPeriod);
                 
-                // Fetch the result directly from the server API with no caching
-                const fetchOptions = {
-                    method: 'GET',
-                    headers: {
-                        'Cache-Control': 'no-cache, no-store, must-revalidate',
-                        'Pragma': 'no-cache',
-                        'Expires': '0'
+                try {
+                    // Fetch the result directly from the server API with no caching
+                    const fetchOptions = {
+                        method: 'GET',
+                        headers: {
+                            'Cache-Control': 'no-cache, no-store, must-revalidate',
+                            'Pragma': 'no-cache',
+                            'Expires': '0'
+                        }
+                    };
+                    
+                    let apiUrl = '';
+                    try {
+                        apiUrl = getApiUrl('/api/latest-result');
+                        console.log('Fetching result from:', apiUrl);
+                    } catch (urlError) {
+                        console.error('Error getting API URL:', urlError);
+                        apiUrl = '/api/latest-result'; // Fallback to relative URL
+                        console.log('Using fallback URL:', apiUrl);
                     }
-                };
-                
-                console.log('Fetching result from:', getApiUrl('/api/latest-result'));
-                const response = await fetch(getApiUrl('/api/latest-result'), fetchOptions);
-                
-                if (!response.ok) {
-                    console.error('Server returned error:', response.status, response.statusText);
-                    showNotification('Error fetching result from server', 'error');
-                    return;
-                }
-                
-                const result = await response.json();
-                console.log('Raw result from server:', JSON.stringify(result));
-                
-                if (!result || typeof result.number !== 'number') {
-                    console.error('Invalid result format:', result);
-                    showNotification('Invalid result format received from server', 'warning');
-                    return;
-                }
-                
-                // Only process bet if there's a confirmed bet that hasn't been processed
-                if (currentBet && activeBetConfirmed && !betProcessed) {
-                    await processResult(result);
-                    betProcessed = true;  // Mark bet as processed
-                }
-                
-                // Reset bet states after showing result
-                resetBetStates();
-                
-                // Determine the correct color class based on the result
-                let colorClass = '';
-                if (result.color.includes('RED')) {
-                    colorClass = 'bg-red-500';
-                } else if (result.color.includes('GREEN')) {
-                    colorClass = 'bg-green-500';
-                } else if (result.color.includes('VIOLET')) {
-                    colorClass = 'bg-violet-500';
-                }
-                
-                // For number 0, it should always be VIOLET
-                if (result.number === 0) {
-                    colorClass = 'bg-violet-500';
-                }
-                
-                // For number 5, it can be both VIOLET and GREEN
-                if (result.number === 5 && result.color.includes('VIOLET')) {
-                    colorClass = 'bg-violet-500';
-                }
-                
-                console.log('Using color class:', colorClass, 'for color:', result.color);
-                console.log('Final result to display:', {
-                    number: result.number,
-                    size: result.size,
-                    color: result.color,
-                    colorClass: colorClass
-                });
-                
-                // Display result
-                resultContent.innerHTML = `
-                    <div class="text-center">
-                        <h2 class="text-orange-500 text-center text-lg font-medium mb-4">Round Result</h2>
-                        <div class="text-9xl font-bold mb-6 text-white text-shadow">${result.number}</div>
-                        <div class="flex gap-4 justify-center">
-                            <div class="px-6 py-2 rounded-full text-white font-bold ${result.size === 'BIG' ? 'bg-orange-500' : 'bg-violet-500'} shadow-lg">
-                                ${result.size}
-                            </div>
-                            <div class="px-6 py-2 rounded-full text-white font-bold ${colorClass} shadow-lg">
-                                ${result.color}
+                    
+                    const response = await fetch(apiUrl, fetchOptions);
+                    
+                    if (!response.ok) {
+                        console.error('Server returned error:', response.status, response.statusText);
+                        showNotification('Error fetching result from server', 'error');
+                        return;
+                    }
+                    
+                    const result = await response.json();
+                    console.log('Raw result from server:', JSON.stringify(result));
+                    
+                    if (!result || typeof result.number !== 'number') {
+                        console.error('Invalid result format:', result);
+                        showNotification('Invalid result format received from server', 'warning');
+                        return;
+                    }
+                    
+                    // Save the result to game history
+                    try {
+                        if (!auth.currentUser) {
+                            // Try anonymous sign in if needed
+                            await auth.signInAnonymously();
+                            console.log('Anonymous authentication successful for result saving');
+                        }
+                        
+                        await saveGameResult(completedPeriod, result);
+                        console.log('Result saved to game history successfully');
+                    } catch (error) {
+                        console.error('Error saving result to game history:', error);
+                        showNotification('Error saving game history', 'warning');
+                        // Continue with showing the result even if saving fails
+                    }
+                    
+                    // Only process bet if there's a confirmed bet that hasn't been processed
+                    if (currentBet && activeBetConfirmed && !betProcessed) {
+                        try {
+                            await processResult(result);
+                            betProcessed = true;  // Mark bet as processed
+                        } catch (betError) {
+                            console.error('Error processing bet result:', betError);
+                            showNotification('Error processing your bet', 'error');
+                        }
+                    }
+                    
+                    // Reset bet states after showing result
+                    resetBetStates();
+                    
+                    // Determine the correct color class based on the result
+                    let colorClass = '';
+                    if (result.color.includes('RED')) {
+                        colorClass = 'bg-red-500';
+                    } else if (result.color.includes('GREEN')) {
+                        colorClass = 'bg-green-500';
+                    } else if (result.color.includes('VIOLET')) {
+                        colorClass = 'bg-violet-500';
+                    }
+                    
+                    // For number 0, it should always be VIOLET
+                    if (result.number === 0) {
+                        colorClass = 'bg-violet-500';
+                    }
+                    
+                    // For number 5, it can be both VIOLET and GREEN
+                    if (result.number === 5 && result.color.includes('VIOLET')) {
+                        colorClass = 'bg-violet-500';
+                    }
+                    
+                    console.log('Using color class:', colorClass, 'for color:', result.color);
+                    console.log('Final result to display:', {
+                        number: result.number,
+                        size: result.size,
+                        color: result.color,
+                        colorClass: colorClass
+                    });
+                    
+                    // Display result
+                    resultContent.innerHTML = `
+                        <div class="text-center">
+                            <h2 class="text-orange-500 text-center text-lg font-medium mb-4">Round Result</h2>
+                            <div class="text-9xl font-bold mb-6 text-white text-shadow">${result.number}</div>
+                            <div class="flex gap-4 justify-center">
+                                <div class="px-6 py-2 rounded-full text-white font-bold ${result.size === 'BIG' ? 'bg-orange-500' : 'bg-violet-500'} shadow-lg">
+                                    ${result.size}
+                                </div>
+                                <div class="px-6 py-2 rounded-full text-white font-bold ${colorClass} shadow-lg">
+                                    ${result.color}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                `;
-                
-                // Ensure the overlay is visible
-                resultOverlay.classList.remove('hidden');
-                resultOverlay.style.display = 'block';
-                
-                // Force an update of the record table
-                updateRecordTable();
-                
-                // Hide after 5 seconds
-                setTimeout(() => {
-                    resultOverlay.classList.add('hidden');
-                    resultOverlay.style.display = 'none';
-                }, 5000);
+                    `;
+                    
+                    // Ensure the overlay is visible
+                    resultOverlay.classList.remove('hidden');
+                    resultOverlay.style.display = 'block';
+                    
+                    // Force an update of the record table
+                    updateRecordTable();
+                    
+                    // Hide after 5 seconds
+                    setTimeout(() => {
+                        resultOverlay.classList.add('hidden');
+                        resultOverlay.style.display = 'none';
+                    }, 5000);
+                    
+                } catch (fetchError) {
+                    console.error('Error fetching or displaying result:', fetchError);
+                    showNotification('Error showing result: ' + fetchError.message, 'warning');
+                }
             } catch (error) {
-                console.error('Error showing result:', error);
+                console.error('Error in showResult function:', error);
                 showNotification('Error showing result: ' + error.message, 'warning');
             }
         }
@@ -735,10 +931,13 @@
             }
 
             const betAmount = selectedBalance * currentQuantity * currentMultiplier;
+            console.log(`Submitting bet: amount=${betAmount}, lastBetType=${lastBetType}`);
+            
             let success = false;
             
             try {
                 if (lastBetType === 'color' && currentColor) {
+                    console.log(`Placing color bet on ${currentColor} for ${betAmount}`);
                     success = await placeBet('color', currentColor, betAmount);
                     if (success) {
                         currentBet = {
@@ -749,6 +948,7 @@
                         };
                     }
                 } else if (lastBetType === 'number' && selectedNumber !== null) {
+                    console.log(`Placing number bet on ${selectedNumber} for ${betAmount}`);
                     success = await placeBet('number', selectedNumber, betAmount);
                     if (success) {
                         currentBet = {
@@ -759,6 +959,7 @@
                         };
                     }
                 } else if (lastBetType === 'size' && selectedSize) {
+                    console.log(`Placing size bet on ${selectedSize} for ${betAmount}`);
                     success = await placeBet('size', selectedSize, betAmount);
                     if (success) {
                         currentBet = {
@@ -768,13 +969,25 @@
                             multiplier: 2
                         };
                     }
+                } else {
+                    console.error('Invalid bet type or missing value', { 
+                        lastBetType, 
+                        currentColor, 
+                        selectedNumber, 
+                        selectedSize 
+                    });
+                    showNotification('Please select a valid bet option', 'warning');
+                    return;
                 }
 
                 if (success && currentBet) {
+                    console.log('Bet confirmed:', currentBet);
                     activeBetConfirmed = true;
                     betProcessed = false;  // Reset processed flag when placing new bet
                     showNotification(`Bet placed: ${currentBet.value} for ₹${currentBet.amount}`);
                     hidePopup();
+                } else {
+                    console.log('Bet placement failed');
                 }
             } catch (error) {
                 console.error('Error placing bet:', error);
@@ -787,9 +1000,22 @@
         async function processResult(result) {
             const user = auth.currentUser;
             if (!user || !activeBetConfirmed || !currentBet || betProcessed) {
+                console.log('Skipping processResult:', { 
+                    hasUser: !!user, 
+                    activeBetConfirmed, 
+                    hasBet: !!currentBet, 
+                    betProcessed 
+                });
                 resetBetStates();
                 return;
             }
+
+            console.log('Processing bet result:', { 
+                betType: currentBet.type, 
+                betValue: currentBet.value, 
+                betAmount: currentBet.amount,
+                result: result 
+            });
 
             try {
                 let isWin = false;
@@ -797,12 +1023,15 @@
                 switch (currentBet.type) {
                     case 'color':
                         isWin = result.color.includes(currentBet.value);
+                        console.log(`Color bet: ${currentBet.value} vs ${result.color}, isWin: ${isWin}`);
                         break;
                     case 'number':
                         isWin = result.number === parseInt(currentBet.value);
+                        console.log(`Number bet: ${currentBet.value} vs ${result.number}, isWin: ${isWin}`);
                         break;
                     case 'size':
                         isWin = result.size === currentBet.value;
+                        console.log(`Size bet: ${currentBet.value} vs ${result.size}, isWin: ${isWin}`);
                         break;
                 }
 
@@ -825,19 +1054,44 @@
                     }
 
                     transaction.winAmount = winAmount;
-                    await collections.transactions.add(transaction);
-                    await updateWalletBalance(winAmount);
+                    
+                    try {
+                        await collections.transactions.add(transaction);
+                        console.log('Win transaction saved:', transaction);
+                    } catch (txError) {
+                        console.error('Error saving win transaction:', txError);
+                    }
+                    
+                    try {
+                        await updateWalletBalance(winAmount);
+                        console.log('Balance updated with win amount:', winAmount);
+                    } catch (balanceError) {
+                        console.error('Error updating balance:', balanceError);
+                    }
+                    
+                    console.log('Showing win popup with amount:', winAmount);
                     showWinPopup(winAmount);
                 } else {
-                    await collections.transactions.add(transaction);
+                    try {
+                        await collections.transactions.add(transaction);
+                        console.log('Loss transaction saved:', transaction);
+                    } catch (txError) {
+                        console.error('Error saving loss transaction:', txError);
+                    }
+                    
+                    console.log('Showing lose popup');
                     showLosePopup();
                 }
+                
+                betProcessed = true;
             } catch (error) {
-                console.error('Error processing result:', error);
-                showNotification('Error processing result', 'error');
+                console.error('Error processing bet result:', error);
+                showNotification(`Error processing bet: ${error.message}`, 'error');
             } finally {
-                betProcessed = true;  // Mark bet as processed
-                resetBetStates();
+                // Ensure bet state is reset after processing
+                setTimeout(() => {
+                    resetBetStates();
+                }, 100);
             }
         }
 
@@ -1151,21 +1405,36 @@
             try {
                 const user = auth.currentUser;
                 if (!user) {
-                    console.error('No user logged in');
-                    throw new Error('Authentication required');
+                    console.error('No user logged in for saveGameResult');
+                    // Try to get anonymous auth
+                    try {
+                        await auth.signInAnonymously();
+                        console.log('Anonymous auth successful in saveGameResult');
+                        // Call this function again after anonymous auth
+                        return saveGameResult(period, result);
+                    } catch (authError) {
+                        console.error('Error signing in anonymously:', authError);
+                        showNotification('Authentication error. Game history may not be saved.', 'warning');
+                        throw new Error('Authentication required');
+                    }
                 }
                 
-                // Create the game history document
-                const docRef = await collections.gameHistory.add({
+                // Create the game history document with all required fields
+                const gameHistoryData = {
                     period: period,
-                number: result.number,
-                size: result.size,
-                color: result.color,
+                    number: result.number,
+                    size: result.size,
+                    color: result.color,
                     userId: user.uid,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                    createdAt: new Date().toISOString()
-                });
+                    createdAt: new Date().toISOString(),
+                    result: result // Store the complete result object
+                };
                 
+                console.log('Saving game result to Firestore:', gameHistoryData);
+                
+                // Add to game history collection
+                const docRef = await collections.gameHistory.add(gameHistoryData);
                 console.log('Game result saved with ID:', docRef.id);
                 
                 // Force an immediate update of the record table
@@ -1618,30 +1887,30 @@
         // Update showWinPopup function
         function showWinPopup(amount) {
             try {
-                const resultOverlay = document.getElementById('resultOverlay');
-                const resultContent = document.getElementById('resultContent');
-                
-                if (!resultOverlay || !resultContent) {
-                    console.error('Result overlay elements not found');
-                    return;
+                // Update the win amount display
+                const winAmountEl = document.getElementById('winAmount');
+                if (winAmountEl) {
+                    winAmountEl.textContent = amount.toFixed(2);
                 }
                 
-                resultContent.innerHTML = `
-                    <div class="text-center">
-                        <div class="w-20 h-20 rounded-full bg-green-500 mx-auto mb-4 flex items-center justify-center">
-                            <i class="fas fa-check-circle text-4xl text-white"></i>
-                        </div>
-                        <h2 class="text-2xl font-bold text-white mb-2">You Won!</h2>
-                        <p class="text-green-500 text-xl font-bold">+₹${amount.toFixed(2)}</p>
-                    </div>
-                `;
-                
-                resultOverlay.classList.remove('hidden');
-                
-                // Hide after 5 seconds
-                setTimeout(() => {
-                    resultOverlay.classList.add('hidden');
-                }, 5000);
+                // Show the win popup
+                const winPopup = document.getElementById('winPopup');
+                if (winPopup) {
+                    winPopup.style.display = 'flex';
+                    winPopup.classList.remove('hidden');
+                    
+                    // Add an animation effect
+                    setTimeout(() => {
+                        const popupContent = winPopup.querySelector('.win-popup-content');
+                        if (popupContent) {
+                            popupContent.classList.remove('scale-90');
+                            popupContent.classList.add('scale-100');
+                        }
+                    }, 10);
+                } else {
+                    console.error('Win popup element not found');
+                    showNotification('Error showing win popup', 'warning');
+                }
             } catch (error) {
                 console.error('Error showing win popup:', error);
                 showNotification('Error showing win popup', 'warning');
@@ -1651,33 +1920,66 @@
         // Update showLosePopup function
         function showLosePopup() {
             try {
-                const resultOverlay = document.getElementById('resultOverlay');
-                const resultContent = document.getElementById('resultContent');
-                
-                if (!resultOverlay || !resultContent) {
-                    console.error('Result overlay elements not found');
-                    return;
+                // Show the lose popup
+                const losePopup = document.getElementById('losePopup');
+                if (losePopup) {
+                    losePopup.style.display = 'flex';
+                    losePopup.classList.remove('hidden');
+                    
+                    // Add an animation effect
+                    setTimeout(() => {
+                        const popupContent = losePopup.querySelector('.lose-popup-content');
+                        if (popupContent) {
+                            popupContent.classList.remove('scale-90');
+                            popupContent.classList.add('scale-100');
+                        }
+                    }, 10);
+                } else {
+                    console.error('Lose popup element not found');
+                    showNotification('Error showing lose popup', 'warning');
                 }
-                
-                resultContent.innerHTML = `
-                    <div class="text-center">
-                        <div class="w-20 h-20 rounded-full bg-red-500 mx-auto mb-4 flex items-center justify-center">
-                            <i class="fas fa-times-circle text-4xl text-white"></i>
-                        </div>
-                        <h2 class="text-2xl font-bold text-white mb-2">You Lost</h2>
-                        <p class="text-red-500 text-xl font-bold">Better luck next time!</p>
-                    </div>
-                `;
-                
-                resultOverlay.classList.remove('hidden');
-                
-                // Hide after 5 seconds
-                setTimeout(() => {
-                    resultOverlay.classList.add('hidden');
-                }, 5000);
             } catch (error) {
                 console.error('Error showing lose popup:', error);
                 showNotification('Error showing lose popup', 'warning');
+            }
+        }
+
+        // Add the hide functions for win/lose popups
+        function hideWinPopup() {
+            try {
+                const winPopup = document.getElementById('winPopup');
+                const popupContent = winPopup.querySelector('.win-popup-content');
+                
+                if (popupContent) {
+                    popupContent.classList.remove('scale-100');
+                    popupContent.classList.add('scale-90');
+                }
+                
+                setTimeout(() => {
+                    winPopup.style.display = 'none';
+                    winPopup.classList.add('hidden');
+                }, 300);
+            } catch (error) {
+                console.error('Error hiding win popup:', error);
+            }
+        }
+
+        function hideLosePopup() {
+            try {
+                const losePopup = document.getElementById('losePopup');
+                const popupContent = losePopup.querySelector('.lose-popup-content');
+                
+                if (popupContent) {
+                    popupContent.classList.remove('scale-100');
+                    popupContent.classList.add('scale-90');
+                }
+                
+                setTimeout(() => {
+                    losePopup.style.display = 'none';
+                    losePopup.classList.add('hidden');
+                }, 300);
+            } catch (error) {
+                console.error('Error hiding lose popup:', error);
             }
         }
 
@@ -1688,17 +1990,13 @@
             document.getElementById('amountInput').textContent = '0';
             document.getElementById('amountPopupTitle').textContent = `${action.charAt(0).toUpperCase() + action.slice(1)} Amount`;
             
-            // Show daily limit info
-            const dailyTransactions = getDailyTransactions();
-            const limit = action === 'withdraw' ? DAILY_WITHDRAW_LIMIT : DAILY_DEPOSIT_LIMIT;
-            const used = action === 'withdraw' ? dailyTransactions.withdrawals : dailyTransactions.deposits;
-            const remaining = limit - used;
-            
-            document.getElementById('dailyLimitInfo').innerHTML = `
-                Used today: ₹${used || 0}<br>
-                Remaining: ₹${remaining || limit}<br>
-                Max per day: ₹${limit}
-            `;
+            // Hide the account sections - we don't need them anymore
+            if (document.getElementById('accountDetailsSection')) {
+                document.getElementById('accountDetailsSection').classList.add('hidden');
+            }
+            if (document.getElementById('upiSection')) {
+                document.getElementById('upiSection').classList.add('hidden');
+            }
             
             document.getElementById('amountPopup').classList.remove('hidden');
         }
@@ -1732,7 +2030,11 @@
                 return;
             }
             
-            const dailyTransactions = getDailyTransactions();
+            const user = auth.currentUser;
+            if (!user) {
+                showNotification('Please login first', 'warning');
+                return;
+            }
             
             if (currentAction === 'withdraw') {
                 if (amount > walletBalance) {
@@ -1740,36 +2042,48 @@
                     return;
                 }
                 
-                // Check daily withdrawal limit
-                if ((dailyTransactions.withdrawals || 0) + amount > DAILY_WITHDRAW_LIMIT) {
-                    showNotification(`Daily withdrawal limit (₹${DAILY_WITHDRAW_LIMIT}) exceeded`, 'warning');
-                    return;
-                }
-                
+                // Update daily transaction tracking
                 updateDailyTransactions('withdrawals', amount);
-            } else if (currentAction === 'deposit') {
-                // Check daily deposit limit
-                if ((dailyTransactions.deposits || 0) + amount > DAILY_DEPOSIT_LIMIT) {
-                    showNotification(`Daily deposit limit (₹${DAILY_DEPOSIT_LIMIT}) exceeded`, 'warning');
-                    return;
-                }
                 
+                // Create message with user account details
+                const message = `Withdrawal Request
+Amount: ₹${amount}
+User ID: ${user.uid}
+Email: ${user.email || 'Anonymous User'}
+Current Balance: ₹${walletBalance.toFixed(2)}`;
+                
+                // Send to WhatsApp
+                const whatsappLink = `https://wa.me/919354835311?text=${encodeURIComponent(message)}`;
+                window.open(whatsappLink, '_blank');
+                
+            } else if (currentAction === 'deposit') {
+                // Update daily transaction tracking
                 updateDailyTransactions('deposits', amount);
+                
+                // Create message with user account details
+                const message = `Deposit Request
+Amount: ₹${amount}
+User ID: ${user.uid}
+Email: ${user.email || 'Anonymous User'}
+Current Balance: ₹${walletBalance.toFixed(2)}`;
+                
+                // Send to WhatsApp
+                const whatsappLink = `https://wa.me/919354835311?text=${encodeURIComponent(message)}`;
+                window.open(whatsappLink, '_blank');
             }
             
-            // WhatsApp message template
-            const message = `${currentAction.charAt(0).toUpperCase() + currentAction.slice(1)} Request
-Amount: ₹${amount}
-Daily ${currentAction}s: ₹${dailyTransactions[currentAction + 's']}
-Remaining limit: ₹${currentAction === 'withdraw' ? 
-    DAILY_WITHDRAW_LIMIT - dailyTransactions.withdrawals : 
-    DAILY_DEPOSIT_LIMIT - dailyTransactions.deposits}`;
-            
-            const whatsappLink = `https://wa.me/919354835311?text=${encodeURIComponent(message)}`;
-            
-            // Open WhatsApp
-            window.open(whatsappLink, '_blank');
             hideAmountPopup();
+            showNotification(`Your ${currentAction} request has been sent via WhatsApp`, 'success');
+        }
+
+        // Function to save account details to localStorage
+        function saveAccountDetails() {
+            // This function is no longer used
+        }
+
+        // Function to load account details from localStorage
+        function loadAccountDetails() {
+            // This function is no longer used
         }
 
         // Update the wallet buttons to use the new popup
@@ -1832,18 +2146,46 @@ Remaining limit: ₹${currentAction === 'withdraw' ?
             currentColor = '';
             selectedNumber = null;
             
-            const headerColor = size === 'big' ? 'bg-orange-500' : 'bg-violet-500';
+            const headerColor = size.toLowerCase() === 'big' ? 'bg-orange-500' : 'bg-violet-500';
             popupHeader.className = `py-6 text-center text-white ${headerColor}`;
             colorSelection.textContent = `Select ${size.toUpperCase()}`;
+            
+            // Reset balance buttons to default state
+            document.querySelectorAll('.balance-btn').forEach((btn, index) => {
+                btn.classList.remove('active', 'bg-red-500');
+                btn.classList.add('bg-[#2c3347]');
+                if (index === 0) {
+                    btn.classList.add('active', 'bg-red-500');
+                    btn.classList.remove('bg-[#2c3347]');
+                }
+            });
+            
+            // Reset quantity and multiplier to defaults
+            currentQuantity = 1;
+            document.getElementById('quantityDisplay').textContent = currentQuantity;
+            
+            currentMultiplier = 1;
+            document.querySelectorAll('.multiplier-btn').forEach((btn, index) => {
+                btn.classList.remove('active', 'bg-red-500');
+                btn.classList.add('bg-[#2c3347]');
+                if (index === 0) {
+                    btn.classList.add('active', 'bg-red-500');
+                    btn.classList.remove('bg-[#2c3347]');
+                }
+            });
+            
             updateTotalAmount();
         }
 
-        // Add this function to handle size buttons
-        document.querySelectorAll('.size-btn').forEach(button => {
-            button.onclick = function() {
-                const size = this.dataset.size;
-                betOnSize(size);
-            };
+        // Add this at the bottom of the script section to initialize size button listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add event listeners for size buttons
+            document.querySelectorAll('.size-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const size = this.getAttribute('data-size');
+                    betOnSize(size);
+                });
+            });
         });
     </script>
 </body>
