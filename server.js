@@ -430,18 +430,11 @@ async function generateAndSaveResult(period) {
     const result = await generateMockResult(period);
     console.log(`Generated new result for period ${period}:`, result);
     
-    // Try to save to Firestore
-    try {
-      await db.collection('gameResults').doc(period).set(result);
-      console.log(`Result saved to Firestore for period ${period}`);
-    } catch (saveError) {
-      console.error('Error saving result to Firestore:', saveError);
-      // Continue even if Firestore save fails
-    }
-    
     // Process game history entries
     try {
       // For testing, create history entries for some test users
+      // Disable test user history creation as client is now saving history properly
+      /*
       const userIds = ['testUser1', 'testUser2', 'testUser3'];
       console.log(`Creating game history entries for ${userIds.length} test users`);
       
@@ -474,6 +467,28 @@ async function generateAndSaveResult(period) {
           // Continue even if Firestore save fails
         }
       }
+      */
+
+      // Only create a single server-side record for the result itself
+      // This will not interfere with client-side user records
+      const serverHistoryData = {
+        period: period,
+        number: result.number,
+        size: result.size,
+        color: result.color,
+        userId: 'server',
+        timestamp: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        isServerGenerated: true
+      };
+      
+      // Save to Firestore
+      try {
+        await db.collection('gameResults').doc(period).set(result);
+        console.log(`Result saved to Firestore gameResults collection for period ${period}`);
+      } catch (firestoreError) {
+        console.error(`Error saving to Firestore gameResults:`, firestoreError);
+      }
       
       console.log(`Game history processing completed for period ${period}`);
     } catch (historyError) {
@@ -485,13 +500,13 @@ async function generateAndSaveResult(period) {
           number: result.number,
           size: result.size,
           color: result.color,
-          userId: 'fallback',
+          userId: 'server-fallback',
           timestamp: new Date().toISOString(),
           createdAt: new Date().toISOString(),
           isFallback: true
         };
         
-        // Save to local file
+        // Save to local file as backup only
         console.log('Attempting to save fallback history entry locally...');
         const saveResult = await saveGameHistoryLocally(fallbackHistoryData);
         console.log('Fallback game history entry created locally, result:', saveResult);

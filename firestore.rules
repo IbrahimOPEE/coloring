@@ -6,8 +6,17 @@ service cloud.firestore {
       return request.auth != null;
     }
     
+    // TESTING ONLY - REMOVE BEFORE PRODUCTION
+    // This allows ANY authenticated user (including anonymous) to have full access
+    // In a production environment, use proper authentication and authorization
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // IMPORTANT: For testing only - in production use proper admin authentication
+    // This allows ANY authenticated user to have admin access
     function isAdmin() {
-      return isAuthenticated() && request.auth.email == 'admin@coloringgame.com';
+      return isAuthenticated();
     }
     
     function isOwner(userId) {

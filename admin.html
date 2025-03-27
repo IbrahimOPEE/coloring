@@ -236,6 +236,15 @@
             const searchTerm = (document.getElementById('searchInput')?.value || '').toLowerCase();
             
             try {
+                // Check for admin authentication first
+                const isAdmin = localStorage.getItem('isAdmin') === 'true';
+                if (!isAdmin) {
+                    // Not authenticated as admin
+                    showNotification('Admin authentication required', 'warning');
+                    document.getElementById('adminLogin').style.display = 'flex';
+                    return;
+                }
+                
                 // Get all users
                 const snapshot = await collections.users.get();
                 const users = [];
@@ -446,15 +455,28 @@
         document.addEventListener('DOMContentLoaded', function() {
             // Check for remembered login
             const adminExpiry = localStorage.getItem('adminExpiry');
+            const isAdmin = localStorage.getItem('isAdmin') === 'true';
             const now = new Date();
             
-            if (adminExpiry && new Date(adminExpiry) > now) {
-                document.getElementById('adminLogin').style.display = 'none';
-                loadUsers();
-            } else {
-                localStorage.removeItem('adminExpiry');
-                document.getElementById('adminLogin').style.display = 'flex';
-            }
+            // Check if already authenticated with Firebase
+            auth.onAuthStateChanged(async (user) => {
+                if (user && isAdmin && adminExpiry && new Date(adminExpiry) > now) {
+                    // User is signed in and admin status is valid
+                    console.log('Already authenticated as admin');
+                    document.getElementById('adminLogin').style.display = 'none';
+                    loadUsers();
+                } else {
+                    // Clear any expired admin sessions
+                    localStorage.removeItem('adminExpiry');
+                    localStorage.removeItem('isAdmin');
+                    document.getElementById('adminLogin').style.display = 'flex';
+                    
+                    // If user is signed in but not admin, sign them out
+                    if (user && !isAdmin) {
+                        await auth.signOut();
+                    }
+                }
+            });
         });
 
         // Update admin password check
@@ -463,15 +485,30 @@
             const rememberMe = document.getElementById('rememberAdmin').checked;
 
             if (password === ADMIN_PASSWORD) {
-                if (rememberMe) {
-                    const expiry = new Date();
-                    expiry.setHours(expiry.getHours() + 24);
-                    localStorage.setItem('adminExpiry', expiry.toISOString());
+                try {
+                    // For a real application, make a secure request to your server
+                    // which should verify the admin password and return a custom token
+                    // with admin privileges. Here we're using anonymous auth as a fallback.
+                    
+                    await auth.signInAnonymously();
+                    console.log('Signed in anonymously as admin');
+                    
+                    // Save admin status in localStorage
+                    localStorage.setItem('isAdmin', 'true');
+                    
+                    if (rememberMe) {
+                        const expiry = new Date();
+                        expiry.setHours(expiry.getHours() + 24);
+                        localStorage.setItem('adminExpiry', expiry.toISOString());
+                    }
+                    
+                    document.getElementById('adminLogin').style.display = 'none';
+                    showNotification('Welcome, Admin!');
+                    loadUsers();
+                } catch (error) {
+                    console.error('Admin login error:', error);
+                    showNotification('Error signing in as admin: ' + error.message, 'warning');
                 }
-                
-                document.getElementById('adminLogin').style.display = 'none';
-                showNotification('Welcome, Admin!');
-                loadUsers();
             } else {
                 showNotification('Invalid password', 'warning');
             }
@@ -481,7 +518,11 @@
         async function logout() {
             if (confirm('Are you sure you want to logout?')) {
                 try {
-                localStorage.removeItem('adminExpiry');
+                    // Sign out from Firebase
+                    await auth.signOut();
+                    // Clear all admin-related storage
+                    localStorage.removeItem('adminExpiry');
+                    localStorage.removeItem('isAdmin');
                     window.location.reload();
                 } catch (error) {
                     console.error('Error logging out:', error);

@@ -142,12 +142,12 @@
                     }
                 } else {
                     console.log('Auth state changed, user is:', user.uid);
-                    // Get user data from Firestore
-                    try {
-                        const userDoc = await collections.users.doc(user.uid).get();
-                        if (userDoc.exists) {
-                            const userData = userDoc.data();
-                            walletBalance = parseFloat(userData.balance) || 0;
+                // Get user data from Firestore
+                try {
+                    const userDoc = await collections.users.doc(user.uid).get();
+                    if (userDoc.exists) {
+                        const userData = userDoc.data();
+                        walletBalance = parseFloat(userData.balance) || 0;
                         } else {
                             // Create a new user document if it doesn't exist
                             console.log('Creating new user document for:', user.uid);
@@ -161,12 +161,12 @@
                         
                         document.getElementById('walletBalance').textContent = walletBalance.toFixed(2);
                         
-                        // Setup listeners after authentication
-                        setupRealtimeListeners();
+                    // Setup listeners after authentication
+                    setupRealtimeListeners();
                         
-                        // Initial record table update
-                        updateRecordTable();
-                    } catch (error) {
+                    // Initial record table update
+                    updateRecordTable();
+                } catch (error) {
                         console.error('Error loading/creating user data:', error);
                         showNotification('Error loading user data', 'warning');
                     }
@@ -747,8 +747,8 @@
                     console.log('Anonymous sign-in successful');
                 } catch (authError) {
                     console.error('Anonymous sign-in failed:', authError);
-                    showNotification('Please login first', 'warning');
-                    return false;
+                showNotification('Please login first', 'warning');
+                return false;
                 }
             }
 
@@ -790,16 +790,16 @@
                 console.log('Showing result for completed period:', completedPeriod);
                 
                 try {
-                    // Fetch the result directly from the server API with no caching
-                    const fetchOptions = {
-                        method: 'GET',
-                        headers: {
-                            'Cache-Control': 'no-cache, no-store, must-revalidate',
-                            'Pragma': 'no-cache',
-                            'Expires': '0'
-                        }
-                    };
-                    
+                // Fetch the result directly from the server API with no caching
+                const fetchOptions = {
+                    method: 'GET',
+                    headers: {
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache',
+                        'Expires': '0'
+                    }
+                };
+                
                     let apiUrl = '';
                     try {
                         apiUrl = getApiUrl('/api/latest-result');
@@ -811,21 +811,21 @@
                     }
                     
                     const response = await fetch(apiUrl, fetchOptions);
-                    
-                    if (!response.ok) {
-                        console.error('Server returned error:', response.status, response.statusText);
-                        showNotification('Error fetching result from server', 'error');
-                        return;
-                    }
-                    
-                    const result = await response.json();
-                    console.log('Raw result from server:', JSON.stringify(result));
-                    
-                    if (!result || typeof result.number !== 'number') {
-                        console.error('Invalid result format:', result);
-                        showNotification('Invalid result format received from server', 'warning');
-                        return;
-                    }
+                
+                if (!response.ok) {
+                    console.error('Server returned error:', response.status, response.statusText);
+                    showNotification('Error fetching result from server', 'error');
+                    return;
+                }
+                
+                const result = await response.json();
+                console.log('Raw result from server:', JSON.stringify(result));
+                
+                if (!result || typeof result.number !== 'number') {
+                    console.error('Invalid result format:', result);
+                    showNotification('Invalid result format received from server', 'warning');
+                    return;
+                }
                     
                     // Save the result to game history
                     try {
@@ -835,84 +835,103 @@
                             console.log('Anonymous authentication successful for result saving');
                         }
                         
-                        await saveGameResult(completedPeriod, result);
-                        console.log('Result saved to game history successfully');
+                        console.log('About to save result to game history, current user:', auth.currentUser?.uid);
+                        
+                        // Try to save the result to Firestore
+                        const saveResult = await saveGameResult(completedPeriod, result);
+                        
+                        if (saveResult) {
+                            console.log('Result saved to Firestore game history successfully with ID:', saveResult.id);
+                        } else {
+                            console.log('No new game history entry was created (may already exist)');
+                        }
                     } catch (error) {
                         console.error('Error saving result to game history:', error);
-                        showNotification('Error saving game history', 'warning');
+                        
+                        // Try one more time with a delay
+                        setTimeout(async () => {
+                            try {
+                                console.log('Retrying save to game history...');
+                                await saveGameResult(completedPeriod, result);
+                            } catch (retryError) {
+                                console.error('Error on retry saving game history:', retryError);
+                                showNotification('Error saving game history', 'warning');
+                            }
+                        }, 2000);
+                        
                         // Continue with showing the result even if saving fails
                     }
-                    
-                    // Only process bet if there's a confirmed bet that hasn't been processed
-                    if (currentBet && activeBetConfirmed && !betProcessed) {
+                
+                // Only process bet if there's a confirmed bet that hasn't been processed
+                if (currentBet && activeBetConfirmed && !betProcessed) {
                         try {
-                            await processResult(result);
-                            betProcessed = true;  // Mark bet as processed
+                    await processResult(result);
+                    betProcessed = true;  // Mark bet as processed
                         } catch (betError) {
                             console.error('Error processing bet result:', betError);
                             showNotification('Error processing your bet', 'error');
                         }
-                    }
-                    
-                    // Reset bet states after showing result
-                    resetBetStates();
-                    
-                    // Determine the correct color class based on the result
-                    let colorClass = '';
-                    if (result.color.includes('RED')) {
-                        colorClass = 'bg-red-500';
-                    } else if (result.color.includes('GREEN')) {
-                        colorClass = 'bg-green-500';
-                    } else if (result.color.includes('VIOLET')) {
-                        colorClass = 'bg-violet-500';
-                    }
-                    
-                    // For number 0, it should always be VIOLET
-                    if (result.number === 0) {
-                        colorClass = 'bg-violet-500';
-                    }
-                    
-                    // For number 5, it can be both VIOLET and GREEN
-                    if (result.number === 5 && result.color.includes('VIOLET')) {
-                        colorClass = 'bg-violet-500';
-                    }
-                    
-                    console.log('Using color class:', colorClass, 'for color:', result.color);
-                    console.log('Final result to display:', {
-                        number: result.number,
-                        size: result.size,
-                        color: result.color,
-                        colorClass: colorClass
-                    });
-                    
-                    // Display result
-                    resultContent.innerHTML = `
-                        <div class="text-center">
-                            <h2 class="text-orange-500 text-center text-lg font-medium mb-4">Round Result</h2>
-                            <div class="text-9xl font-bold mb-6 text-white text-shadow">${result.number}</div>
-                            <div class="flex gap-4 justify-center">
-                                <div class="px-6 py-2 rounded-full text-white font-bold ${result.size === 'BIG' ? 'bg-orange-500' : 'bg-violet-500'} shadow-lg">
-                                    ${result.size}
-                                </div>
-                                <div class="px-6 py-2 rounded-full text-white font-bold ${colorClass} shadow-lg">
-                                    ${result.color}
-                                </div>
+                }
+                
+                // Reset bet states after showing result
+                resetBetStates();
+                
+                // Determine the correct color class based on the result
+                let colorClass = '';
+                if (result.color.includes('RED')) {
+                    colorClass = 'bg-red-500';
+                } else if (result.color.includes('GREEN')) {
+                    colorClass = 'bg-green-500';
+                } else if (result.color.includes('VIOLET')) {
+                    colorClass = 'bg-violet-500';
+                }
+                
+                // For number 0, it should always be VIOLET
+                if (result.number === 0) {
+                    colorClass = 'bg-violet-500';
+                }
+                
+                // For number 5, it can be both VIOLET and GREEN
+                if (result.number === 5 && result.color.includes('VIOLET')) {
+                    colorClass = 'bg-violet-500';
+                }
+                
+                console.log('Using color class:', colorClass, 'for color:', result.color);
+                console.log('Final result to display:', {
+                    number: result.number,
+                    size: result.size,
+                    color: result.color,
+                    colorClass: colorClass
+                });
+                
+                // Display result
+                resultContent.innerHTML = `
+                    <div class="text-center">
+                        <h2 class="text-orange-500 text-center text-lg font-medium mb-4">Round Result</h2>
+                        <div class="text-9xl font-bold mb-6 text-white text-shadow">${result.number}</div>
+                        <div class="flex gap-4 justify-center">
+                            <div class="px-6 py-2 rounded-full text-white font-bold ${result.size === 'BIG' ? 'bg-orange-500' : 'bg-violet-500'} shadow-lg">
+                                ${result.size}
+                            </div>
+                            <div class="px-6 py-2 rounded-full text-white font-bold ${colorClass} shadow-lg">
+                                ${result.color}
                             </div>
                         </div>
-                    `;
-                    
-                    // Ensure the overlay is visible
-                    resultOverlay.classList.remove('hidden');
-                    resultOverlay.style.display = 'block';
-                    
-                    // Force an update of the record table
-                    updateRecordTable();
-                    
-                    // Hide after 5 seconds
-                    setTimeout(() => {
-                        resultOverlay.classList.add('hidden');
-                        resultOverlay.style.display = 'none';
-                    }, 5000);
+                    </div>
+                `;
+                
+                // Ensure the overlay is visible
+                resultOverlay.classList.remove('hidden');
+                resultOverlay.style.display = 'block';
+                
+                // Force an update of the record table
+                updateRecordTable();
+                
+                // Hide after 5 seconds
+                setTimeout(() => {
+                    resultOverlay.classList.add('hidden');
+                    resultOverlay.style.display = 'none';
+                }, 5000);
                     
                 } catch (fetchError) {
                     console.error('Error fetching or displaying result:', fetchError);
@@ -1056,14 +1075,14 @@
                     transaction.winAmount = winAmount;
                     
                     try {
-                        await collections.transactions.add(transaction);
+                    await collections.transactions.add(transaction);
                         console.log('Win transaction saved:', transaction);
                     } catch (txError) {
                         console.error('Error saving win transaction:', txError);
                     }
                     
                     try {
-                        await updateWalletBalance(winAmount);
+                    await updateWalletBalance(winAmount);
                         console.log('Balance updated with win amount:', winAmount);
                     } catch (balanceError) {
                         console.error('Error updating balance:', balanceError);
@@ -1073,7 +1092,7 @@
                     showWinPopup(winAmount);
                 } else {
                     try {
-                        await collections.transactions.add(transaction);
+                    await collections.transactions.add(transaction);
                         console.log('Loss transaction saved:', transaction);
                     } catch (txError) {
                         console.error('Error saving loss transaction:', txError);
@@ -1090,7 +1109,7 @@
             } finally {
                 // Ensure bet state is reset after processing
                 setTimeout(() => {
-                    resetBetStates();
+                resetBetStates();
                 }, 100);
             }
         }
@@ -1419,6 +1438,26 @@
                     }
                 }
                 
+                console.log('Current user for game history:', user.uid, user.isAnonymous ? '(anonymous)' : '');
+                
+                // Check if this result already exists for this user and period
+                try {
+                    const existingResults = await collections.gameHistory
+                        .where('userId', '==', user.uid)
+                        .where('period', '==', period)
+                        .get();
+                    
+                    if (!existingResults.empty) {
+                        console.log(`Result for period ${period} already exists for user ${user.uid}, skipping save`);
+                        // Just update the record table with existing data
+                        await updateRecordTable();
+                        return null;
+                    }
+                } catch (checkError) {
+                    console.error('Error checking for existing results:', checkError);
+                    // Continue to try saving anyway
+                }
+                
                 // Create the game history document with all required fields
                 const gameHistoryData = {
                     period: period,
@@ -1431,24 +1470,33 @@
                     result: result // Store the complete result object
                 };
                 
-                console.log('Saving game result to Firestore:', gameHistoryData);
+                console.log('Attempting to save game result to Firestore:', gameHistoryData);
                 
-                // Add to game history collection
-                const docRef = await collections.gameHistory.add(gameHistoryData);
-                console.log('Game result saved with ID:', docRef.id);
-                
-                // Force an immediate update of the record table
-                const snapshot = await collections.gameHistory
-                    .where('userId', '==', user.uid)
-                    .orderBy('timestamp', 'desc')
-                    .limit(10)
-                    .get();
-                
-                await updateRecordTable(snapshot);
-                
-                return docRef;
+                try {
+                    // Add to game history collection
+                    const docRef = await collections.gameHistory.add(gameHistoryData);
+                    console.log('Game result saved successfully to Firestore with ID:', docRef.id);
+                    
+                    // Force an immediate update of the record table
+                    const snapshot = await collections.gameHistory
+                        .where('userId', '==', user.uid)
+                        .orderBy('timestamp', 'desc')
+                        .limit(10)
+                        .get();
+                    
+                    await updateRecordTable(snapshot);
+                    
+                    // Show a success notification
+                    showNotification('Game result saved to history', 'success');
+                    
+                    return docRef;
+                } catch (firestoreError) {
+                    console.error('Firestore error saving game result:', firestoreError);
+                    showNotification('Error saving to Firestore: ' + firestoreError.message, 'error');
+                    throw firestoreError;
+                }
             } catch (error) {
-                console.error("Error saving game result:", error);
+                console.error("Error in saveGameResult function:", error);
                 showNotification('Unable to save game result. Please check your connection.', 'warning');
                 throw error;
             }
@@ -1478,22 +1526,38 @@
         async function updateRecordTable(snapshot = null) {
             try {
                 const tbody = document.getElementById('recordTableBody');
-                if (!tbody) return;
+                if (!tbody) {
+                    console.warn('Record table body element not found');
+                    return;
+                }
                 
                 tbody.innerHTML = '';
                 
                 if (!snapshot) {
                     const user = auth.currentUser;
                     if (!user) {
+                        console.warn('No logged in user for updateRecordTable');
                         showNotification('Please login to view game history', 'warning');
                         return;
                     }
                     
-                    snapshot = await collections.gameHistory
-                        .where('userId', '==', user.uid)
-                    .orderBy('timestamp', 'desc')
-                    .limit(10)
-                    .get();
+                    console.log('Getting game history for user:', user.uid);
+                    
+                    try {
+                        snapshot = await collections.gameHistory
+                            .where('userId', '==', user.uid)
+                            .orderBy('timestamp', 'desc')
+                            .limit(10)
+                            .get();
+                        
+                        console.log(`Query returned ${snapshot.size} records for user ${user.uid}`);
+                    } catch (queryError) {
+                        console.error('Error querying Firestore for game history:', queryError);
+                        showNotification('Failed to load game history: ' + queryError.message, 'error');
+                        return;
+                    }
+                } else {
+                    console.log(`Using provided snapshot with ${snapshot.size} records`);
                 }
                 
                 const gameHistory = [];
@@ -1505,6 +1569,8 @@
                     });
                 });
                 
+                console.log(`Processed ${gameHistory.length} records for display`);
+                
                 // Sort by timestamp in descending order
                 gameHistory.sort((a, b) => {
                     const timeA = a.timestamp ? a.timestamp.toDate() : new Date(0);
@@ -1515,12 +1581,33 @@
                 // Take only the last 10 records
                 const recentHistory = gameHistory.slice(0, 10);
                 
-                recentHistory.forEach(record => {
+                if (recentHistory.length === 0) {
+                    console.log('No history records to display');
+                    // Add a message when there are no records
+                    const row = document.createElement('tr');
+                    row.className = 'border-b border-gray-800/50';
+                    row.innerHTML = `
+                        <td colspan="4" class="py-4 px-4 text-gray-400 text-center">
+                            No game history available yet
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                    return;
+                }
+                
+                recentHistory.forEach((record, index) => {
                     const row = document.createElement('tr');
                     row.className = 'border-b border-gray-800/50';
                     
                     const colorClass = getColorClass(record.number);
                     const timestamp = record.timestamp ? new Date(record.timestamp.toDate()).toLocaleTimeString() : '';
+                    
+                    console.log(`Record ${index + 1}:`, { 
+                        period: record.period, 
+                        number: record.number, 
+                        size: record.size, 
+                        color: record.color 
+                    });
                     
                     row.innerHTML = `
                         <td class="py-2 px-4 text-gray-300">${record.period}</td>
@@ -1900,7 +1987,7 @@
                     winPopup.classList.remove('hidden');
                     
                     // Add an animation effect
-                    setTimeout(() => {
+                setTimeout(() => {
                         const popupContent = winPopup.querySelector('.win-popup-content');
                         if (popupContent) {
                             popupContent.classList.remove('scale-90');
@@ -2059,7 +2146,7 @@ Current Balance: ₹${walletBalance.toFixed(2)}`;
             } else if (currentAction === 'deposit') {
                 // Update daily transaction tracking
                 updateDailyTransactions('deposits', amount);
-                
+            
                 // Create message with user account details
                 const message = `Deposit Request
 Amount: ₹${amount}
@@ -2068,8 +2155,8 @@ Email: ${user.email || 'Anonymous User'}
 Current Balance: ₹${walletBalance.toFixed(2)}`;
                 
                 // Send to WhatsApp
-                const whatsappLink = `https://wa.me/919354835311?text=${encodeURIComponent(message)}`;
-                window.open(whatsappLink, '_blank');
+            const whatsappLink = `https://wa.me/919354835311?text=${encodeURIComponent(message)}`;
+            window.open(whatsappLink, '_blank');
             }
             
             hideAmountPopup();
@@ -2180,10 +2267,10 @@ Current Balance: ₹${walletBalance.toFixed(2)}`;
         // Add this at the bottom of the script section to initialize size button listeners
         document.addEventListener('DOMContentLoaded', function() {
             // Add event listeners for size buttons
-            document.querySelectorAll('.size-btn').forEach(button => {
+        document.querySelectorAll('.size-btn').forEach(button => {
                 button.addEventListener('click', function() {
                     const size = this.getAttribute('data-size');
-                    betOnSize(size);
+                betOnSize(size);
                 });
             });
         });
