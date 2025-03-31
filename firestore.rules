@@ -6,17 +6,12 @@ service cloud.firestore {
       return request.auth != null;
     }
     
-    // TESTING ONLY - REMOVE BEFORE PRODUCTION
-    // This allows ANY authenticated user (including anonymous) to have full access
-    // In a production environment, use proper authentication and authorization
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+    function isAnonymous() {
+      return request.auth != null && request.auth.token.firebase.sign_in_provider == 'anonymous';
     }
     
-    // IMPORTANT: For testing only - in production use proper admin authentication
-    // This allows ANY authenticated user to have admin access
     function isAdmin() {
-      return isAuthenticated();
+      return request.auth != null && request.auth.token.admin == true;
     }
     
     function isOwner(userId) {
@@ -31,18 +26,25 @@ service cloud.firestore {
       return result.number is number && 
              result.number >= 0 && 
              result.number <= 9 && 
-             (result.color in ['RED', 'GREEN', 'VIOLET']) && 
+             (result.color in ['RED', 'GREEN', 'VIOLET', 'VIOLET GREEN']) && 
              (result.size in ['BIG', 'SMALL']);
     }
 
-    // Admin has full access to all collections
-    match /{document=**} {
-      allow read, write: if isAdmin();
+    // Game Results collection - Allow public read
+    match /gameResults/{period} {
+      allow read: if true;  // Allow public read access
+      allow write: if isAdmin();  // Only admin can write
+    }
+    
+    // Game State collection - Allow public read
+    match /gameState/{stateId} {
+      allow read: if true;  // Allow public read access
+      allow write: if isAdmin();  // Only admin can write
     }
     
     // Users collection
     match /users/{userId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
       allow write: if isOwner(userId) || isAdmin();
       
       // Add validation for balance updates
@@ -54,8 +56,7 @@ service cloud.firestore {
     // Transactions collection
     match /transactions/{transactionId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid &&
-                   isValidAmount(request.resource.data.betAmount);
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
     }
     
@@ -71,23 +72,7 @@ service cloud.firestore {
     // Game History collection
     match /gameHistory/{historyId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAdmin();
-    }
-    
-    // Game State collection
-    match /gameState/{stateId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-    
-    // Game Results collection
-    match /gameResults/{period} {
-      allow read: if isAuthenticated();
-      // Only allow create if no document exists for the period
-      allow create: if isAuthenticated() && 
-                   !exists(/databases/$(database)/documents/gameResults/$(period)) &&
-                   isValidGameResult(request.resource.data);
+      allow create: if isAuthenticated();
       allow update, delete: if isAdmin();
     }
   }

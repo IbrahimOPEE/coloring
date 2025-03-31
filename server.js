@@ -14,7 +14,7 @@ const LOCAL_HISTORY_FILE = path.join(__dirname, 'local_game_history.json');
 
 // Global flag to track if the scheduler is running
 let isSchedulerRunning = false;
-let serverPort = 3000; // Default port, will be updated when server starts
+let serverPort = process.env.PORT || 3000; // Use environment PORT or default to 3000
 
 // Function to check if a port is in use
 function isPortInUse(port) {
@@ -33,6 +33,12 @@ function isPortInUse(port) {
 
 // Function to find an available port
 async function findAvailablePort(startPort) {
+  // In production (Render), always use the provided PORT
+  if (process.env.PORT) {
+    return process.env.PORT;
+  }
+  
+  // Only search for available port in development
   let port = startPort;
   while (await isPortInUse(port)) {
     console.log(`Port ${port} is in use, trying next port`);
