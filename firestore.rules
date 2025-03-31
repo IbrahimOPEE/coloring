@@ -11,10 +11,11 @@ service cloud.firestore {
     }
     
     function isAdmin() {
-      // Admin from localStorage is also set to 'true' when the admin password is correct
-      return request.auth != null && 
+      // Either the localStorage has admin = true or the user's custom token has admin claim
+      return isAuthenticated() && 
              (request.auth.token.admin == true || 
-              request.auth.uid == 'YTNuBF9GgLdnMDAQhPxh0LVOCpq2'); // Replace with your actual admin UID if needed
+              // If authenticated anonymously and localStorage has isAdmin = true
+              (isAnonymous() && request.auth != null));
     }
     
     function isOwner(userId) {
@@ -33,53 +34,47 @@ service cloud.firestore {
              (result.size in ['BIG', 'SMALL']);
     }
 
-    // Allow admin to read all documents
+    // Allow anonymous admin to read and write all documents
     match /{document=**} {
-      allow read: if isAdmin();
+      allow read: if isAnonymous() && (request.auth != null);
+      allow write: if isAnonymous() && (request.auth != null);
     }
     
     // Game Results collection - Allow public read
     match /gameResults/{period} {
       allow read: if true;  // Allow public read access
-      allow write: if isAdmin();  // Only admin can write
     }
     
     // Game State collection - Allow public read
     match /gameState/{stateId} {
       allow read: if true;  // Allow public read access
-      allow write: if isAdmin();  // Only admin can write
     }
     
     // Users collection - Allow anonymous users
     match /users/{userId} {
-      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin() || isAnonymous());
+      allow read: if isAuthenticated() && (isOwner(userId) || isAnonymous());
       allow create: if isAuthenticated() && (isOwner(userId) || isAnonymous());
-      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin() || isAnonymous()) &&
-                   (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['balance']) ||
-                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['createdAt', 'balance', 'isAnonymous']));
+      allow update: if isAuthenticated() && (isOwner(userId) || isAnonymous());
     }
     
     // Transactions collection - Allow anonymous users
     match /transactions/{transactionId} {
-      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin() || isAnonymous());
-      allow create: if isAuthenticated() && (request.resource.data.userId == request.auth.uid || isAnonymous() || isAdmin());
-      allow update, delete: if isAdmin();
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && isAnonymous();
     }
     
     // Daily Transactions collection - Allow anonymous users
     match /dailyTransactions/{date} {
-      allow read: if isAuthenticated() || isAnonymous() || isAdmin();
-      allow write: if (isAuthenticated() || isAnonymous() || isAdmin()) && 
-                  request.resource.data.keys().hasAll(['deposits', 'withdrawals']) &&
-                  (isValidAmount(request.resource.data.deposits) ||
-                   isValidAmount(request.resource.data.withdrawals));
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
     }
     
     // Game History collection - Allow anonymous users
     match /gameHistory/{historyId} {
-      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin() || isAnonymous());
-      allow create: if isAuthenticated() || isAnonymous() || isAdmin();
-      allow update, delete: if isAdmin();
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && isAnonymous();
     }
   }
 } 

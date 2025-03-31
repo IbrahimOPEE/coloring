@@ -10,7 +10,38 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
-    <script src="firebase-config.js"></script>
+    <!-- Firebase Config -->
+    <script>
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCHaGjJ-t3DCE7xY08C6aV7w35xxjMZpdc",
+            authDomain: "coloring-705b5.firebaseapp.com",
+            projectId: "coloring-705b5",
+            storageBucket: "coloring-705b5.firebasestorage.app",
+            messagingSenderId: "686022960865",
+            appId: "1:686022960865:web:a9a5203d8b7d98f98ab9a0",
+            measurementId: "G-3MZYE1BP0K"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+
+        // Get Firestore reference
+        const db = firebase.firestore();
+
+        // Collection references
+        const collections = {
+            users: db.collection('users'),
+            transactions: db.collection('transactions'),
+            dailyTransactions: db.collection('dailyTransactions'),
+            gameHistory: db.collection('gameHistory'),
+            gameState: db.collection('gameState'),
+            gameResults: db.collection('gameResults')
+        };
+
+        // Auth reference
+        const auth = firebase.auth();
+    </script>
     <style>
         body {
             background: #1a1f2e;
@@ -552,19 +583,16 @@
 
             if (password === ADMIN_PASSWORD) {
                 try {
-                    // For a real application, make a secure request to your server
-                    // which should verify the admin password and return a custom token
-                    // with admin privileges. Here we're using anonymous auth as a fallback.
+                    showNotification('Logging in...', 'info');
                     
                     // Sign out any existing user first
                     if (auth.currentUser) {
                         await auth.signOut();
                     }
                     
-                    // Sign in with email/password if you have admin credentials
-                    // For demo purposes, we'll use anonymous auth with admin flag in localStorage
-                    await auth.signInAnonymously();
-                    console.log('Signed in anonymously as admin');
+                    // Use anonymous auth for the admin panel
+                    const userCredential = await auth.signInAnonymously();
+                    console.log('Signed in anonymously as admin', userCredential.user.uid);
                     
                     // Save admin status in localStorage
                     localStorage.setItem('isAdmin', 'true');
@@ -584,7 +612,12 @@
                     }, 1000);
                 } catch (error) {
                     console.error('Admin login error:', error);
-                    showNotification('Error signing in as admin: ' + error.message, 'warning');
+                    
+                    // Reset admin status
+                    localStorage.removeItem('isAdmin');
+                    localStorage.removeItem('adminExpiry');
+                    
+                    showNotification('Error signing in: ' + error.message, 'warning');
                 }
             } else {
                 showNotification('Invalid password', 'warning');
