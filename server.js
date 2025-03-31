@@ -75,7 +75,17 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Global time sync endpoint
 app.get('/api/time', (req, res) => {
-  res.json({ serverTime: Date.now() });
+  const now = new Date();
+  const currentPeriod = getPeriod();
+  const completedPeriod = getCompletedPeriod();
+  
+  res.json({ 
+    serverTime: now.getTime(),
+    currentPeriod,
+    completedPeriod,
+    currentSeconds: now.getSeconds(),
+    milliseconds: now.getMilliseconds()
+  });
 });
 
 // API endpoint to get server info including port
@@ -225,60 +235,120 @@ async function generateMockResult(period) {
   };
 }
 
-// Helper function to handle latest result request
-async function handleLatestResultRequest(req, res) {
+// Result generation function with deterministic output
+async function generateAndSaveResult(period) {
   try {
-    // Get the most recently completed period
-    const completedPeriod = getCompletedPeriod();
-    
-    // Try to get the result for the completed period
-    let resultDoc;
+    // Check if a result already exists for this period
+    let existingDoc;
     try {
-      const docRef = db.collection('gameResults').doc(completedPeriod);
-      resultDoc = await docRef.get(); // Use admin SDK directly
-    } catch (authError) {
-      console.error('Authentication error when fetching result:', authError);
-      // Return a mock result as fallback
-      const mockResult = await generateMockResult(completedPeriod);
-      console.log('Returning mock result due to authentication error:', mockResult);
-      return res.json(mockResult);
-    }
-    
-    if (!resultDoc.exists) {
-      // If no result for the most recent completed period, try the period before that
-      const previousCompletedPeriod = getPreviousCompletedPeriod();
-      try {
-        const prevDocRef = db.collection('gameResults').doc(previousCompletedPeriod);
-        resultDoc = await prevDocRef.get(); // Use admin SDK directly
-      } catch (authError) {
-        console.error('Authentication error when fetching previous result:', authError);
-        // Return a mock result as fallback
-        const mockResult = await generateMockResult(previousCompletedPeriod);
-        console.log('Returning mock result due to authentication error:', mockResult);
-        return res.json(mockResult);
+      const docRef = db.collection('gameResults').doc(period);
+      existingDoc = await docRef.get();
+      if (existingDoc.exists) {
+        console.log(`Result for period ${period} already exists, returning existing result`);
+        return existingDoc.data();
       }
+    } catch (authError) {
+      console.error('Authentication error when checking for existing result:', authError);
     }
     
-    if (resultDoc.exists) {
-      res.json(resultDoc.data());
-    } else {
-      // If no result found in database, generate a mock result
-      const mockResult = await generateMockResult(completedPeriod);
-      console.log('No result found in database, returning mock result:', mockResult);
-      res.json(mockResult);
+    // Generate a deterministic result based on the period
+    const result = await generateMockResult(period);
+    
+    // Save the result to Firestore
+    try {
+      await db.collection('gameResults').doc(period).set({
+        ...result,
+        timestamp: new Date().toISOString(),
+        generatedAt: new Date().toISOString(),
+        period: period
+      });
+      console.log(`Result saved to Firestore for period ${period}`);
+    } catch (error) {
+      console.error(`Error saving result to Firestore:`, error);
     }
+    
+    return result;
   } catch (error) {
-    console.error('Error fetching latest result:', error);
-    // Return a mock result as last resort
-    const mockResult = await generateMockResult(getCompletedPeriod());
-    console.log('Returning mock result due to error:', mockResult);
-    res.json(mockResult);
+    console.error('Error in generateAndSaveResult:', error);
+    return null;
   }
+}
+
+// Get current period with server time
+function getPeriod() {
+  const now = new Date();
+  // Round down to nearest 30 seconds to ensure consistency
+  const roundedSeconds = Math.floor(now.getSeconds() / 30) * 30;
+  const periodDate = new Date(now);
+  periodDate.setSeconds(roundedSeconds);
+  periodDate.setMilliseconds(0);
+  
+  const year = periodDate.getFullYear().toString().slice(-2);
+  const month = (periodDate.getMonth() + 1).toString().padStart(2, '0');
+  const day = periodDate.getDate().toString().padStart(2, '0');
+  const hour = periodDate.getHours().toString().padStart(2, '0');
+  const minute = periodDate.getMinutes().toString().padStart(2, '0');
+  const periodSuffix = roundedSeconds === 0 ? '-1' : '-2';
+  
+  return `${year}${month}${day}${hour}${minute}${periodSuffix}`;
+}
+
+// Function to get the period that just completed
+function getCompletedPeriod() {
+  const now = new Date();
+  
+  // Round down to the last 30-second mark
+  const currentSeconds = now.getSeconds();
+  const completedTime = new Date(now);
+  
+  if (currentSeconds < 30) {
+    // If we're in the first half, get the previous minute's second half
+    completedTime.setMinutes(completedTime.getMinutes() - 1);
+    completedTime.setSeconds(30);
+  } else {
+    // If we're in the second half, get this minute's first half
+    completedTime.setSeconds(0);
+  }
+  completedTime.setMilliseconds(0);
+  
+  const year = completedTime.getFullYear().toString().slice(-2);
+  const month = (completedTime.getMonth() + 1).toString().padStart(2, '0');
+  const day = completedTime.getDate().toString().padStart(2, '0');
+  const hour = completedTime.getHours().toString().padStart(2, '0');
+  const minute = completedTime.getMinutes().toString().padStart(2, '0');
+  const periodSuffix = completedTime.getSeconds() === 0 ? '-1' : '-2';
+  
+  return `${year}${month}${day}${hour}${minute}${periodSuffix}`;
 }
 
 // API endpoint to get the latest result
 app.get('/api/latest-result', async (req, res) => {
-  await handleLatestResultRequest(req, res);
+  try {
+    const completedPeriod = getCompletedPeriod();
+    console.log('Getting result for completed period:', completedPeriod);
+    
+    // Try to get existing result first
+    const docRef = db.collection('gameResults').doc(completedPeriod);
+    const doc = await docRef.get();
+    
+    if (doc.exists) {
+      console.log('Found existing result for period:', completedPeriod);
+      return res.json(doc.data());
+    }
+    
+    // If no result exists, generate one
+    console.log('No existing result found, generating new result for period:', completedPeriod);
+    const result = await generateAndSaveResult(completedPeriod);
+    
+    if (result) {
+      res.json(result);
+    } else {
+      res.status(500).json({ error: 'Failed to generate result' });
+    }
+  } catch (error) {
+    console.error('Error in /api/latest-result:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // API endpoint to manually trigger result generation (for testing)
@@ -432,141 +502,6 @@ app.post('/api/test-local-save', (req, res) => {
   }
 });
 
-// Result generation function
-async function generateAndSaveResult(period) {
-  try {
-    // Check if a result already exists for this period
-    let existingDoc;
-    try {
-      const docRef = db.collection('gameResults').doc(period);
-      existingDoc = await docRef.get(); // Use admin SDK directly
-      if (existingDoc.exists) {
-        console.log(`Result for period ${period} already exists, returning existing result`);
-        return existingDoc.data();
-      }
-    } catch (authError) {
-      console.error('Authentication error when checking for existing result:', authError);
-      // Continue to generate a new result
-    }
-    
-    // Generate a new result
-    const result = await generateMockResult(period);
-    console.log(`Generated new result for period ${period}:`, result);
-    
-    // Process game history entries
-    try {
-      // For testing, create history entries for some test users
-      // Disable test user history creation as client is now saving history properly
-      /*
-      const userIds = ['testUser1', 'testUser2', 'testUser3'];
-      console.log(`Creating game history entries for ${userIds.length} test users`);
-      
-      for (const userId of userIds) {
-        const historyData = {
-          period: period,
-          number: result.number,
-          size: result.size,
-          color: result.color,
-          userId: userId,
-          timestamp: new Date().toISOString(),
-          createdAt: new Date().toISOString()
-        };
-        
-        try {
-          // Save to local file
-          console.log(`Attempting to save local history for user ${userId}...`);
-          const saveResult = await saveGameHistoryLocally(historyData);
-          console.log(`Game history saved locally for user ${userId}, result:`, saveResult);
-        } catch (saveError) {
-          console.error(`Error saving local history for user ${userId}:`, saveError);
-        }
-        
-        // Also try to save to Firestore if possible
-        try {
-          await db.collection('gameHistory').add(historyData);
-          console.log(`Game history also saved to Firestore for user ${userId} for period ${period}`);
-        } catch (firestoreError) {
-          console.error(`Error saving to Firestore history for user ${userId}:`, firestoreError);
-          // Continue even if Firestore save fails
-        }
-      }
-      */
-
-      // Only create a single server-side record for the result itself
-      // This will not interfere with client-side user records
-      const serverHistoryData = {
-        period: period,
-        number: result.number,
-        size: result.size,
-        color: result.color,
-        userId: 'server',
-        timestamp: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        isServerGenerated: true
-      };
-      
-      // Save to Firestore
-      try {
-        await db.collection('gameResults').doc(period).set(result);
-        console.log(`Result saved to Firestore gameResults collection for period ${period}`);
-      } catch (firestoreError) {
-        console.error(`Error saving to Firestore gameResults:`, firestoreError);
-      }
-      
-      console.log(`Game history processing completed for period ${period}`);
-    } catch (historyError) {
-      console.error('Error saving to game history:', historyError);
-      // Create a fallback history entry
-      try {
-        const fallbackHistoryData = {
-          period: period,
-          number: result.number,
-          size: result.size,
-          color: result.color,
-          userId: 'server-fallback',
-          timestamp: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
-          isFallback: true
-        };
-        
-        // Save to local file as backup only
-        console.log('Attempting to save fallback history entry locally...');
-        const saveResult = await saveGameHistoryLocally(fallbackHistoryData);
-        console.log('Fallback game history entry created locally, result:', saveResult);
-      } catch (fallbackError) {
-        console.error('Error creating fallback history entry:', fallbackError);
-      }
-    }
-    
-    return result;
-  } catch (error) {
-    console.error('Error in generateAndSaveResult:', error);
-    // Return a mock result as fallback
-    return await generateMockResult(period);
-  }
-}
-
-// Get current period
-function getPeriod() {
-  const now = new Date();
-  const year = now.getFullYear().toString().slice(-2);
-  const month = (now.getMonth() + 1).toString().padStart(2, '0');
-  const day = now.getDate().toString().padStart(2, '0');
-  const hour = now.getHours().toString().padStart(2, '0');
-  const minute = now.getMinutes().toString().padStart(2, '0');
-  const seconds = now.getSeconds();
-  const periodSuffix = seconds < 30 ? '-1' : '-2';
-  
-  return `${year}${month}${day}${hour}${minute}${periodSuffix}`;
-}
-
-// Function to get the previous period
-function getPreviousPeriod() {
-  const now = new Date();
-  now.setSeconds(now.getSeconds() - 30); // Go back 30 seconds
-  return getPeriod(now);
-}
-
 // Result generation scheduler
 async function scheduleResultGeneration() {
   const now = new Date();
@@ -610,64 +545,6 @@ async function scheduleResultGeneration() {
       scheduleResultGeneration(); // Schedule next result
     }
   }, delay);
-}
-
-// Function to get the period that just completed
-function getCompletedPeriod() {
-  const now = new Date();
-  
-  // Create a copy of the current time
-  const completedTime = new Date(now);
-  
-  // Adjust the time to the previous period end
-  const seconds = now.getSeconds();
-  if (seconds < 30) {
-    // If we're in the first half of the minute, the completed period was the second half of the previous minute
-    completedTime.setSeconds(0);
-    completedTime.setMinutes(completedTime.getMinutes() - 1);
-    completedTime.setSeconds(30);
-  } else {
-    // If we're in the second half of the minute, the completed period was the first half of the current minute
-    completedTime.setSeconds(0);
-  }
-  
-  const year = completedTime.getFullYear().toString().slice(-2);
-  const month = (completedTime.getMonth() + 1).toString().padStart(2, '0');
-  const day = completedTime.getDate().toString().padStart(2, '0');
-  const hour = completedTime.getHours().toString().padStart(2, '0');
-  const minute = completedTime.getMinutes().toString().padStart(2, '0');
-  const periodSuffix = completedTime.getSeconds() < 30 ? '-1' : '-2';
-  
-  return `${year}${month}${day}${hour}${minute}${periodSuffix}`;
-}
-
-// Function to get the period before the most recently completed period
-function getPreviousCompletedPeriod() {
-  const now = new Date();
-  
-  // Create a copy of the current time
-  const previousCompletedTime = new Date(now);
-  
-  // Adjust the time to the period before the most recently completed period
-  const seconds = now.getSeconds();
-  if (seconds < 30) {
-    // If we're in the first half of the minute, go back to the first half of the previous minute
-    previousCompletedTime.setMinutes(previousCompletedTime.getMinutes() - 1);
-    previousCompletedTime.setSeconds(0);
-  } else {
-    // If we're in the second half of the minute, go back to the second half of the previous minute
-    previousCompletedTime.setMinutes(previousCompletedTime.getMinutes() - 1);
-    previousCompletedTime.setSeconds(30);
-  }
-  
-  const year = previousCompletedTime.getFullYear().toString().slice(-2);
-  const month = (previousCompletedTime.getMonth() + 1).toString().padStart(2, '0');
-  const day = previousCompletedTime.getDate().toString().padStart(2, '0');
-  const hour = previousCompletedTime.getHours().toString().padStart(2, '0');
-  const minute = previousCompletedTime.getMinutes().toString().padStart(2, '0');
-  const periodSuffix = previousCompletedTime.getSeconds() < 30 ? '-1' : '-2';
-  
-  return `${year}${month}${day}${hour}${minute}${periodSuffix}`;
 }
 
 // Start the result generation scheduler
