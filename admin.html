@@ -281,18 +281,34 @@
                     return;
                 }
                 
+                // Make sure we're authenticated
+                if (!auth.currentUser) {
+                    showNotification('Not authenticated, please log in again', 'warning');
+                    document.getElementById('adminLogin').style.display = 'flex';
+                    return;
+                }
+                
+                showNotification('Loading users...', 'info');
+                
                 // Get all users
                 const snapshot = await collections.users.get();
                 const users = [];
                 snapshot.forEach(doc => {
                     const userData = doc.data() || {};
+                    
+                    // Format user data - handle anonymous users specially
+                    const isAnon = userData.isAnonymous || false;
+                    const userName = userData.name || (isAnon ? 'Anonymous User' : 'No Name');
+                    const userEmail = userData.email || (isAnon ? 'Anonymous' : 'No Email');
+                    
                     users.push({
                         id: doc.id,
-                        name: userData.name || (userData.isAnonymous ? 'Anonymous User' : 'No Name'),
-                        email: userData.email || (userData.isAnonymous ? 'Anonymous' : 'No Email'),
+                        name: userName,
+                        email: userEmail,
                         balance: parseFloat(userData.balance) || 0,
                         lastLogin: userData.lastLogin,
-                        isAnonymous: userData.isAnonymous || false,
+                        isAnonymous: isAnon,
+                        createdAt: userData.createdAt,
                         uid: doc.id
                     });
                 });
@@ -411,27 +427,36 @@
             try {
                 const userDoc = await collections.users.doc(userId).get();
                 if (!userDoc.exists) {
-                showNotification('User not found', 'warning');
-                return;
-            }
+                    showNotification('User not found', 'warning');
+                    return;
+                }
 
                 const userData = userDoc.data();
                 currentEditUser = {
                     id: userId,
                     ...userData
                 };
+                
+                // Format user data properly
+                const isAnon = userData.isAnonymous || false;
+                const userName = userData.name || (isAnon ? 'Anonymous User' : 'No Name');
+                const createdDate = userData.createdAt ? 
+                    (typeof userData.createdAt.toDate === 'function' ? 
+                        userData.createdAt.toDate().toLocaleString() : 'Unknown date') 
+                    : 'Unknown date';
             
-            const userInfo = document.querySelector('.user-info');
-            userInfo.innerHTML = `
-                <div class="text-lg font-medium text-white mb-1">${userData.name || (userData.isAnonymous ? 'Anonymous User' : 'No Name')}</div>
-                <div class="text-sm mb-2">Current Balance: ₹${(parseFloat(userData.balance) || 0).toFixed(2)}</div>
-                <div class="text-xs text-gray-500 bg-gray-800 p-2 rounded overflow-auto">
-                    <span class="font-bold">User ID:</span> ${userId}
-                </div>
-            `;
+                const userInfo = document.querySelector('.user-info');
+                userInfo.innerHTML = `
+                    <div class="text-lg font-medium text-white mb-1">${userName} ${isAnon ? '<span class="bg-gray-700 text-gray-300 text-xs px-2 py-1 rounded ml-1">Anonymous</span>' : ''}</div>
+                    <div class="text-sm mb-2">Current Balance: ₹${(parseFloat(userData.balance) || 0).toFixed(2)}</div>
+                    <div class="text-xs text-gray-500 bg-gray-800 p-2 rounded overflow-auto mb-2">
+                        <span class="font-bold">User ID:</span> ${userId}
+                    </div>
+                    <div class="text-xs text-gray-500">Created: ${createdDate}</div>
+                `;
 
                 document.getElementById('newBalance').value = userData.balance || 0;
-            document.getElementById('editModal').classList.remove('hidden');
+                document.getElementById('editModal').classList.remove('hidden');
             } catch (error) {
                 console.error('Error showing edit modal:', error);
                 showNotification('Error loading user data', 'warning');
@@ -531,6 +556,13 @@
                     // which should verify the admin password and return a custom token
                     // with admin privileges. Here we're using anonymous auth as a fallback.
                     
+                    // Sign out any existing user first
+                    if (auth.currentUser) {
+                        await auth.signOut();
+                    }
+                    
+                    // Sign in with email/password if you have admin credentials
+                    // For demo purposes, we'll use anonymous auth with admin flag in localStorage
                     await auth.signInAnonymously();
                     console.log('Signed in anonymously as admin');
                     
@@ -545,7 +577,11 @@
                     
                     document.getElementById('adminLogin').style.display = 'none';
                     showNotification('Welcome, Admin!');
-                    loadUsers();
+                    
+                    // Wait a bit to ensure auth is fully processed
+                    setTimeout(() => {
+                        loadUsers();
+                    }, 1000);
                 } catch (error) {
                     console.error('Admin login error:', error);
                     showNotification('Error signing in as admin: ' + error.message, 'warning');

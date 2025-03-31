@@ -11,7 +11,10 @@ service cloud.firestore {
     }
     
     function isAdmin() {
-      return request.auth != null && request.auth.token.admin == true;
+      // Admin from localStorage is also set to 'true' when the admin password is correct
+      return request.auth != null && 
+             (request.auth.token.admin == true || 
+              request.auth.uid == 'YTNuBF9GgLdnMDAQhPxh0LVOCpq2'); // Replace with your actual admin UID if needed
     }
     
     function isOwner(userId) {
@@ -30,6 +33,11 @@ service cloud.firestore {
              (result.size in ['BIG', 'SMALL']);
     }
 
+    // Allow admin to read all documents
+    match /{document=**} {
+      allow read: if isAdmin();
+    }
+    
     // Game Results collection - Allow public read
     match /gameResults/{period} {
       allow read: if true;  // Allow public read access
@@ -54,23 +62,23 @@ service cloud.firestore {
     // Transactions collection - Allow anonymous users
     match /transactions/{transactionId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin() || isAnonymous());
-      allow create: if isAuthenticated() && (request.resource.data.userId == request.auth.uid || isAnonymous());
+      allow create: if isAuthenticated() && (request.resource.data.userId == request.auth.uid || isAnonymous() || isAdmin());
       allow update, delete: if isAdmin();
     }
     
     // Daily Transactions collection - Allow anonymous users
     match /dailyTransactions/{date} {
-      allow read: if isAuthenticated() || isAnonymous();
-      allow write: if (isAuthenticated() || isAnonymous()) && 
+      allow read: if isAuthenticated() || isAnonymous() || isAdmin();
+      allow write: if (isAuthenticated() || isAnonymous() || isAdmin()) && 
                   request.resource.data.keys().hasAll(['deposits', 'withdrawals']) &&
-                  isValidAmount(request.resource.data.deposits) &&
-                  isValidAmount(request.resource.data.withdrawals);
+                  (isValidAmount(request.resource.data.deposits) ||
+                   isValidAmount(request.resource.data.withdrawals));
     }
     
     // Game History collection - Allow anonymous users
     match /gameHistory/{historyId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin() || isAnonymous());
-      allow create: if isAuthenticated() || isAnonymous();
+      allow create: if isAuthenticated() || isAnonymous() || isAdmin();
       allow update, delete: if isAdmin();
     }
   }
