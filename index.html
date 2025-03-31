@@ -95,9 +95,13 @@
                     const userData = snapshot.data();
                     walletBalance = parseFloat(userData.balance) || 0;
                     document.getElementById('walletBalance').textContent = walletBalance.toFixed(2);
+                    console.log('User balance updated from listener:', walletBalance);
+                } else {
+                    console.error('User document does not exist in balance listener');
                 }
             }, error => {
                 console.error('Error in user balance listener:', error);
+                showNotification('Error updating balance. Please refresh the page.', 'warning');
             });
         }
         
@@ -142,31 +146,34 @@
                     }
                 } else {
                     console.log('Auth state changed, user is:', user.uid);
-                // Get user data from Firestore
-                try {
-                    const userDoc = await collections.users.doc(user.uid).get();
-                    if (userDoc.exists) {
-                        const userData = userDoc.data();
-                        walletBalance = parseFloat(userData.balance) || 0;
+                    // Get user data from Firestore
+                    try {
+                        const userDoc = await collections.users.doc(user.uid).get();
+                        if (userDoc.exists) {
+                            const userData = userDoc.data();
+                            walletBalance = parseFloat(userData.balance) || 0;
+                            console.log('User document exists, loaded balance:', walletBalance);
                         } else {
                             // Create a new user document if it doesn't exist
                             console.log('Creating new user document for:', user.uid);
                             await collections.users.doc(user.uid).set({
-                                balance: 0,
+                                balance: 100, // Give users a starting balance for better experience
                                 isAnonymous: user.isAnonymous,
                                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
                             });
-                            walletBalance = 0;
+                            walletBalance = 100;
+                            console.log('Created new user with starting balance:', walletBalance);
                         }
                         
+                        // Update wallet display
                         document.getElementById('walletBalance').textContent = walletBalance.toFixed(2);
                         
-                    // Setup listeners after authentication
-                    setupRealtimeListeners();
+                        // Setup listeners after authentication
+                        setupRealtimeListeners();
                         
-                    // Initial record table update
-                    updateRecordTable();
-                } catch (error) {
+                        // Initial record table update
+                        updateRecordTable();
+                    } catch (error) {
                         console.error('Error loading/creating user data:', error);
                         showNotification('Error loading user data', 'warning');
                     }
