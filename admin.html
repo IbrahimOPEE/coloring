@@ -154,6 +154,36 @@
             </div>
         </div>
 
+        <!-- Quick Balance Update Section -->
+        <div class="bg-[#252a3c] rounded-xl p-4 mb-8">
+            <h3 class="text-white font-bold mb-4">Quick Balance Update</h3>
+            <div class="flex items-center gap-4 flex-wrap">
+                <div class="flex-1 min-w-[200px]">
+                    <label class="text-gray-400 text-sm block mb-1">User ID or Email</label>
+                    <input type="text" id="quickUserId" placeholder="Enter user ID or email" 
+                        class="w-full bg-gray-800 text-white px-4 py-2 rounded-lg outline-none border border-gray-700 focus:border-orange-500">
+                </div>
+                <div class="flex-1 min-w-[150px]">
+                    <label class="text-gray-400 text-sm block mb-1">Amount</label>
+                    <input type="number" id="quickAmount" placeholder="Enter amount" 
+                        class="w-full bg-gray-800 text-white px-4 py-2 rounded-lg outline-none border border-gray-700 focus:border-orange-500">
+                </div>
+                <div class="flex-1 min-w-[150px]">
+                    <label class="text-gray-400 text-sm block mb-1">Action</label>
+                    <select id="quickAction" class="w-full bg-gray-800 text-white px-4 py-2 rounded-lg outline-none border border-gray-700 focus:border-orange-500">
+                        <option value="set">Set Balance</option>
+                        <option value="add">Add Amount</option>
+                        <option value="subtract">Subtract Amount</option>
+                    </select>
+                </div>
+                <div class="flex-shrink-0 self-end">
+                    <button onclick="performQuickUpdate()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors">
+                        Update Balance
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Users List -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6" id="usersList">
             <!-- User cards will be added here dynamically -->
@@ -172,6 +202,12 @@
                 <div class="input-group bg-gray-800 rounded-lg p-3 border border-gray-700">
                     <label class="text-gray-400 text-sm mb-1 block">New Balance</label>
                     <input type="number" id="newBalance" class="w-full bg-transparent text-white outline-none" placeholder="Enter amount">
+                </div>
+                <div class="flex gap-2 justify-between">
+                    <button onclick="quickAdjust(100)" class="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30">+100</button>
+                    <button onclick="quickAdjust(500)" class="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30">+500</button>
+                    <button onclick="quickAdjust(1000)" class="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30">+1000</button>
+                    <button onclick="quickAdjust(5000)" class="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30">+5000</button>
                 </div>
                 <div class="input-group bg-gray-800 rounded-lg p-3 border border-gray-700">
                     <label class="text-gray-400 text-sm mb-1 block">Note (optional)</label>
@@ -252,10 +288,12 @@
                     const userData = doc.data() || {};
                     users.push({
                         id: doc.id,
-                        name: userData.name || 'No Name',
-                        email: userData.email || 'No Email',
+                        name: userData.name || (userData.isAnonymous ? 'Anonymous User' : 'No Name'),
+                        email: userData.email || (userData.isAnonymous ? 'Anonymous' : 'No Email'),
                         balance: parseFloat(userData.balance) || 0,
-                        lastLogin: userData.lastLogin
+                        lastLogin: userData.lastLogin,
+                        isAnonymous: userData.isAnonymous || false,
+                        uid: doc.id
                     });
                 });
             
@@ -335,27 +373,27 @@
                 card.innerHTML = `
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
-                            <div class="w-12 h-12 rounded-full bg-orange-500 flex items-center justify-center">
-                                <i class="fas fa-user text-white"></i>
+                            <div class="w-12 h-12 rounded-full ${user.isAnonymous ? 'bg-gray-600' : 'bg-orange-500'} flex items-center justify-center">
+                                <i class="fas ${user.isAnonymous ? 'fa-user-secret' : 'fa-user'} text-white"></i>
                             </div>
                             <div>
-                                    <div class="text-white font-medium">${user.name}</div>
-                                    <div class="text-gray-400 text-sm">${user.email}</div>
-                                </div>
+                                <div class="text-white font-medium">${user.name} ${user.isAnonymous ? '<span class="bg-gray-700 text-gray-300 text-xs px-2 py-1 rounded ml-1">Anonymous</span>' : ''}</div>
+                                <div class="text-gray-400 text-sm overflow-hidden text-ellipsis" style="max-width: 200px;">${user.isAnonymous ? 'ID: ' + user.id : user.email}</div>
                             </div>
-                            <button onclick="showEditModal('${user.id}')" class="bg-gray-800 text-white px-4 py-2 rounded-lg text-sm">
+                        </div>
+                        <button onclick="showEditModal('${user.id}')" class="bg-gray-800 text-white px-4 py-2 rounded-lg text-sm">
                             Edit Balance
                         </button>
                     </div>
                     <div class="grid grid-cols-2 gap-4 mt-4">
                         <div class="bg-gray-800 rounded-lg p-3">
-                            <div class="text-gray-400 text-sm mb-1">Email</div>
-                                <div class="text-white text-sm truncate">${user.email}</div>
+                            <div class="text-gray-400 text-sm mb-1">${user.isAnonymous ? 'User ID' : 'Email'}</div>
+                            <div class="text-white text-sm truncate">${user.isAnonymous ? user.id : user.email}</div>
                         </div>
                         <div class="bg-gray-800 rounded-lg p-3">
                             <div class="text-gray-400 text-sm mb-1">Balance</div>
-                                <div class="text-white text-sm">₹${user.balance.toFixed(2)}</div>
-                            </div>
+                            <div class="text-white text-sm">₹${user.balance.toFixed(2)}</div>
+                        </div>
                     </div>
                     ${transactionsHtml}
                 `;
@@ -385,8 +423,11 @@
             
             const userInfo = document.querySelector('.user-info');
             userInfo.innerHTML = `
-                    <div class="text-lg font-medium text-white mb-1">${userData.name || 'No Name'}</div>
-                    <div class="text-sm">Current Balance: ₹${(parseFloat(userData.balance) || 0).toFixed(2)}</div>
+                <div class="text-lg font-medium text-white mb-1">${userData.name || (userData.isAnonymous ? 'Anonymous User' : 'No Name')}</div>
+                <div class="text-sm mb-2">Current Balance: ₹${(parseFloat(userData.balance) || 0).toFixed(2)}</div>
+                <div class="text-xs text-gray-500 bg-gray-800 p-2 rounded overflow-auto">
+                    <span class="font-bold">User ID:</span> ${userId}
+                </div>
             `;
 
                 document.getElementById('newBalance').value = userData.balance || 0;
@@ -663,6 +704,100 @@
                 checkAdminPassword();
             }
         });
+
+        // Add quick balance adjust feature
+        function quickAdjust(amount) {
+            const currentBalance = parseFloat(document.getElementById('newBalance').value) || 0;
+            document.getElementById('newBalance').value = currentBalance + amount;
+        }
+
+        // Add quick update functionality
+        async function performQuickUpdate() {
+            const userId = document.getElementById('quickUserId').value.trim();
+            const amount = parseFloat(document.getElementById('quickAmount').value);
+            const action = document.getElementById('quickAction').value;
+            
+            if (!userId) {
+                showNotification('Please enter a user ID or email', 'warning');
+                return;
+            }
+            
+            if (isNaN(amount) || amount < 0) {
+                showNotification('Please enter a valid amount', 'warning');
+                return;
+            }
+            
+            try {
+                // First, look up the user by ID
+                let userDoc = null;
+                let userId2 = userId;
+                
+                // Check if this is an email address
+                if (userId.includes('@')) {
+                    // Find the user by email
+                    const usersSnapshot = await collections.users.where('email', '==', userId).limit(1).get();
+                    
+                    if (usersSnapshot.empty) {
+                        showNotification('User not found', 'warning');
+                        return;
+                    }
+                    
+                    userDoc = usersSnapshot.docs[0];
+                    userId2 = userDoc.id;
+                } else {
+                    // Try to get user by ID
+                    userDoc = await collections.users.doc(userId).get();
+                    
+                    if (!userDoc.exists) {
+                        showNotification('User not found', 'warning');
+                        return;
+                    }
+                }
+                
+                const userData = userDoc.data();
+                const currentBalance = parseFloat(userData.balance) || 0;
+                let newBalance = 0;
+                
+                switch (action) {
+                    case 'set':
+                        newBalance = amount;
+                        break;
+                    case 'add':
+                        newBalance = currentBalance + amount;
+                        break;
+                    case 'subtract':
+                        newBalance = Math.max(0, currentBalance - amount);
+                        break;
+                }
+                
+                // Update the user's balance
+                await collections.users.doc(userId2).update({
+                    balance: newBalance
+                });
+                
+                // Create a transaction record
+                await collections.transactions.add({
+                    userId: userId2,
+                    type: action === 'subtract' ? 'withdrawal' : 'deposit',
+                    amount: amount,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    status: 'completed',
+                    note: 'Admin quick update'
+                });
+                
+                showNotification(`Balance updated successfully! New balance: ₹${newBalance.toFixed(2)}`);
+                
+                // Refresh the list
+                loadUsers();
+                
+                // Clear the form
+                document.getElementById('quickUserId').value = '';
+                document.getElementById('quickAmount').value = '';
+            } catch (error) {
+                console.error('Error updating balance:', error);
+                showNotification('Error updating balance: ' + error.message, 'warning');
+            }
+        }
     </script>
 </body>
 </html> 
