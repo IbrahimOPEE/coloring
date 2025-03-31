@@ -1202,10 +1202,8 @@
 
         // Helper function to get the correct URL for API endpoints
         function getApiUrl(endpoint) {
-            if (serverBaseUrl) {
-                return `${serverBaseUrl}${endpoint}`;
-            }
-            return endpoint; // Use relative URL if no base URL is set
+            // Use the current origin (this will automatically use the correct port)
+            return `${window.location.origin}${endpoint}`;
         }
 
         // Synchronize time with server

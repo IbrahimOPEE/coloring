@@ -48,7 +48,14 @@ async function findAvailablePort(startPort) {
 }
 
 const app = express();
-app.use(cors());
+
+// Configure CORS to allow requests from your domain
+app.use(cors({
+  origin: ['https://coloring-uv3a.onrender.com', 'http://localhost:3000'],
+  methods: ['GET', 'POST'],
+  credentials: true
+}));
+
 app.use(express.json());
 
 // Serve static files from the root directory
@@ -75,6 +82,16 @@ app.get('/api/time', (req, res) => {
 app.get('/api/server-info', (req, res) => {
   res.json({ 
     port: serverPort,
+    serverTime: Date.now()
+  });
+});
+
+// Add a route to serve the base URL configuration
+app.get('/api/config', (req, res) => {
+  const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+  const host = req.get('host');
+  res.json({
+    baseUrl: `${protocol}://${host}`,
     serverTime: Date.now()
   });
 });
