@@ -315,10 +315,12 @@
             width: 100%;
             margin: 0 auto;
             padding: 1rem;
+            padding-bottom: 80px; /* Add bottom padding to avoid overlap with navbar */
         }
         @media (max-width: 380px) {
             .game-container {
                 padding: 0.5rem;
+                padding-bottom: 80px; /* Maintain bottom padding on small screens */
             }
             .number-ball {
                 width: 3rem !important;
@@ -626,7 +628,7 @@
             </div>
 
             <!-- Navigation -->
-            <div class="fixed bottom-0 left-0 right-0 bg-[#fff] border-t border-gray-800">
+            <div class="fixed bottom-0 left-0 right-0 bg-[#fff] border-t border-gray-800 z-30">
                 <div class="max-w-md mx-auto grid grid-cols-4 gap-4 p-3">
                     <a href="index.html" class="nav-item active flex flex-col items-center text-orange-500">
                         <span class="text-xl"><i class="fas fa-home"></i></span>
@@ -648,7 +650,7 @@
             </div>
 
             <!-- Add this before the closing game-container div -->
-            <div class="bg-[#1a1f2e] rounded-xl overflow-hidden mb-4">
+            <div class="bg-[#1a1f2e] rounded-xl overflow-hidden mb-20"> <!-- Increased margin-bottom from mb-4 to mb-20 -->
                 <div class="p-4 border-b border-gray-800">
                     <h3 class="text-white font-medium">Record</h3>
                 </div>
