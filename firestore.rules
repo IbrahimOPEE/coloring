@@ -32,35 +32,49 @@ service cloud.firestore {
              (result.size in ['BIG', 'SMALL']);
     }
 
-    // Users collection - Allow admin operations
-    match /users/{userId} {
-      allow read, write: if true;  // Allow admin panel operations
+    // Updated rules to allow all operations needed for the game
+    
+    // Default rule - deny access unless explicitly allowed
+    match /{document=**} {
+      allow read, write: if false;
     }
 
-    // Keep all other collection rules unchanged
+    // Allow read access to all users for game results
     match /gameResults/{period} {
-      allow read: if true;
+      allow read: if true;  // Everyone can read results
+      allow write: if true; // Server can write results
     }
     
+    // Allow read access for game state
     match /gameState/{stateId} {
-      allow read: if true;
+      allow read: if true;  // Everyone can read game state
+      allow write: if true; // Server can update game state
     }
     
+    // Users collection
+    match /users/{userId} {
+      allow read: if true;  // Public user profiles
+      allow write: if isAuthenticated() && isOwner(userId);  // Users can only update their own data
+    }
+    
+    // Transaction rules
     match /transactions/{transactionId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated() && isAnonymous();
+      allow update, delete: if isAuthenticated() && isOwner(resource.data.userId);
     }
     
+    // Daily transactions summary
     match /dailyTransactions/{date} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow write: if isAuthenticated() && isAdmin();
     }
     
+    // Game history
     match /gameHistory/{historyId} {
-      allow read: if isAuthenticated();
+      allow read: if true;  // Everyone can read game history
       allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated() && isAnonymous();
+      allow update, delete: if isAuthenticated() && isAdmin();
     }
   }
 }

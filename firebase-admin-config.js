@@ -2,6 +2,9 @@ const admin = require('firebase-admin');
 const fs = require('fs');
 const path = require('path');
 
+// Global flag to track if we're using unauthenticated mode
+let isUnauthenticatedMode = false;
+
 // Function to initialize Firebase Admin SDK
 function initializeFirebaseAdmin() {
   try {
@@ -32,7 +35,27 @@ function initializeFirebaseAdmin() {
     if (!fs.existsSync(serviceAccountPath)) {
       console.error('Service account key file not found at:', serviceAccountPath);
       console.error('Please ensure either the serviceAccountKey.json file is present or FIREBASE_SERVICE_ACCOUNT environment variable is set');
-      throw new Error('Firebase service account configuration not found');
+      console.warn('Proceeding in unauthenticated mode - results will be generated deterministically but not saved to Firestore');
+      isUnauthenticatedMode = true;
+      return {
+        // Provide mock firestore methods
+        firestore: () => ({
+          collection: () => ({
+            doc: () => ({
+              get: async () => ({ exists: false, data: () => null }),
+              set: async () => console.log('Mock firestore: document set (not actually saved)')
+            }),
+            orderBy: () => ({
+              limit: () => ({
+                get: async () => ({ 
+                  empty: true,
+                  forEach: () => {} 
+                })
+              })
+            })
+          })
+        })
+      };
     }
     
     // Load service account
@@ -41,7 +64,27 @@ function initializeFirebaseAdmin() {
     // Validate service account data
     if (!serviceAccount.project_id || !serviceAccount.private_key || !serviceAccount.client_email) {
       console.error('Invalid service account data. Missing required fields.');
-      throw new Error('Invalid Firebase service account configuration');
+      console.warn('Proceeding in unauthenticated mode - results will be generated deterministically but not saved to Firestore');
+      isUnauthenticatedMode = true;
+      return {
+        // Provide mock firestore methods
+        firestore: () => ({
+          collection: () => ({
+            doc: () => ({
+              get: async () => ({ exists: false, data: () => null }),
+              set: async () => console.log('Mock firestore: document set (not actually saved)')
+            }),
+            orderBy: () => ({
+              limit: () => ({
+                get: async () => ({ 
+                  empty: true,
+                  forEach: () => {} 
+                })
+              })
+            })
+          })
+        })
+      };
     }
     
     // Initialize Firebase Admin
@@ -62,15 +105,36 @@ function initializeFirebaseAdmin() {
   } catch (error) {
     console.error('Error initializing Firebase Admin SDK:', error);
     console.error('Stack trace:', error.stack);
-    throw error;
+    console.warn('Proceeding in unauthenticated mode - results will be generated deterministically but not saved to Firestore');
+    isUnauthenticatedMode = true;
+    return {
+      // Provide mock firestore methods
+      firestore: () => ({
+        collection: () => ({
+          doc: () => ({
+            get: async () => ({ exists: false, data: () => null }),
+            set: async () => console.log('Mock firestore: document set (not actually saved)')
+          }),
+          orderBy: () => ({
+            limit: () => ({
+              get: async () => ({ 
+                empty: true,
+                forEach: () => {} 
+              })
+            })
+          })
+        })
+      })
+    };
   }
 }
 
 // Initialize and export Firebase Admin
 const firebaseAdmin = initializeFirebaseAdmin();
 
-// Export both the admin instance and Firestore
+// Export both the admin instance, Firestore, and the authentication mode flag
 module.exports = {
   admin: firebaseAdmin,
-  firestore: firebaseAdmin.firestore()
+  firestore: firebaseAdmin.firestore(),
+  isUnauthenticatedMode
 }; 

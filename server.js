@@ -5,7 +5,7 @@ const net = require('net');
 const fs = require('fs');
 
 // Import Firebase Admin from our configuration file
-const { admin, firestore } = require('./firebase-admin-config');
+const { admin, firestore, isUnauthenticatedMode } = require('./firebase-admin-config');
 
 const db = firestore;
 
@@ -232,37 +232,69 @@ async function generateAndSaveResult(period) {
   try {
     // Check if a result already exists for this period
     let existingDoc;
+    let existingResult = null;
+    
     try {
       const docRef = db.collection('gameResults').doc(period);
       existingDoc = await docRef.get();
       if (existingDoc.exists) {
         console.log(`Result for period ${period} already exists, returning existing result`);
-        return existingDoc.data();
+        existingResult = existingDoc.data();
+        return existingResult;
       }
     } catch (authError) {
       console.error('Authentication error when checking for existing result:', authError);
+      // Continue execution - we'll generate a deterministic result even if we can't save it
     }
     
     // Generate a deterministic result based on the period
     const result = await generateMockResult(period);
     
-    // Save the result to Firestore
+    // Save the result to Firestore if authentication is working
     try {
-      await db.collection('gameResults').doc(period).set({
-        ...result,
-        timestamp: new Date().toISOString(),
-        generatedAt: new Date().toISOString(),
-        period: period
-      });
-      console.log(`Result saved to Firestore for period ${period}`);
-    } catch (error) {
-      console.error(`Error saving result to Firestore:`, error);
+      if (!isUnauthenticatedMode) {
+        await db.collection('gameResults').doc(period).set(result);
+        console.log(`Result saved to Firestore for period ${period}`);
+      } else {
+        console.log(`Running in unauthenticated mode - result for period ${period} not saved to Firestore`);
+      }
+    } catch (saveError) {
+      console.error('Error saving result to Firestore:', saveError);
+      console.log(`Generated result for completed period ${period} after auth error:`, result);
+      // Continue - we still want to return the deterministic result
+    }
+    
+    // Save to local file as backup
+    try {
+      const historyData = await getLocalGameHistory();
+      historyData.results = historyData.results || [];
+      
+      // Check if this period already exists in local history
+      const existingIndex = historyData.results.findIndex(item => item.period === period);
+      if (existingIndex >= 0) {
+        historyData.results[existingIndex] = result;
+      } else {
+        historyData.results.push(result);
+      }
+      
+      // Keep only the latest 100 results
+      if (historyData.results.length > 100) {
+        historyData.results = historyData.results.slice(-100);
+      }
+      
+      await saveGameHistoryLocally(historyData);
+      console.log(`Result also saved to local backup file for period ${period}`);
+    } catch (localSaveError) {
+      console.error('Error saving to local backup:', localSaveError);
     }
     
     return result;
   } catch (error) {
-    console.error('Error in generateAndSaveResult:', error);
-    return null;
+    console.error(`Error in generateAndSaveResult for period ${period}:`, error);
+    // In case of any error, still return a deterministic result
+    const fallbackResult = await generateMockResult(period);
+    console.log(`Using fallback deterministic result for period ${period} after error:`, fallbackResult);
+    return fallbackResult;
   }
 }
 
