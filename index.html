@@ -889,12 +889,19 @@
                 
                 let apiUrl = '';
                 try {
-                    // Always use the fixed port 3456
-                    apiUrl = 'http://127.0.0.1:3456/api/latest-result';
+                    // Get the current host and protocol
+                    const protocol = window.location.protocol;
+                    const hostname = window.location.hostname;
+                    const port = window.location.port;
+                    
+                    // Construct the base URL
+                    const baseUrl = `${protocol}//${hostname}${port ? ':' + port : ''}`;
+                    apiUrl = `${baseUrl}/api/latest-result`;
                     console.log('Fetching result from:', apiUrl);
                 } catch (urlError) {
                     console.error('Error getting API URL:', urlError);
-                    apiUrl = 'http://127.0.0.1:3456/api/latest-result'; // Keep consistent port in fallback
+                    // Fallback to relative URL
+                    apiUrl = '/api/latest-result';
                     console.log('Using fallback URL:', apiUrl);
                 }
                 

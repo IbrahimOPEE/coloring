@@ -20,7 +20,7 @@ const app = express();
 
 // Configure CORS to allow requests from your domain
 app.use(cors({
-  origin: ['http://127.0.0.1:3456', 'http://localhost:3456'],
+  origin: ['https://coloring-uv3a.onrender.com', 'http://localhost:3456', 'http://127.0.0.1:3456'],
   methods: ['GET', 'POST'],
   credentials: true
 }));
