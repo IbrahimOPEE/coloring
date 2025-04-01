@@ -45,140 +45,114 @@
     <script>
         // Define setupRealtimeListeners function early
         function setupRealtimeListeners() {
-            const user = auth.currentUser;
-            if (!user) {
-                console.error('No user logged in');
-                // Try to get anonymous auth
-                auth.signInAnonymously()
-                    .then(() => {
-                        console.log('Anonymous auth successful in setupRealtimeListeners');
-                        // Call setup again after anonymous auth
-                        setupRealtimeListeners();
-                    })
-                    .catch(error => {
-                        console.error('Error signing in anonymously:', error);
-                        showNotification('Error signing in anonymously. Some features may not work.', 'warning');
-                    });
-                return;
-            }
-
-            console.log('Setting up realtime listeners for user:', user.uid);
-
-            // Listen for game state changes
-            collections.gameState.doc('current').onSnapshot(snapshot => {
-                if (snapshot.exists) {
-                    gameState = snapshot.data();
-                    console.log('Game state updated:', gameState);
-                    updateGameUI();
+            // Wait for auth state to be initialized
+            auth.onAuthStateChanged(function(user) {
+                if (!user) {
+                    console.error('No user logged in');
+                    // Redirect to auth page instead of anonymous auth
+                    window.location.href = 'auth.html';
+                    return;
                 }
-            }, error => {
-                console.error('Error in game state listener:', error);
-                showNotification('Unable to update game state. Please refresh the page.', 'warning');
-            });
 
-            // Listen for game history changes
-            collections.gameHistory
-                .where('userId', '==', user.uid)
-                .orderBy('timestamp', 'desc')
-                .limit(10)
-                .onSnapshot(snapshot => {
-                    console.log('Game history update received');
-                    updateRecordTable(snapshot);
+                console.log('Setting up realtime listeners for user:', user.uid);
+
+                // Listen for game state changes
+                collections.gameState.doc('current').onSnapshot(snapshot => {
+                    if (snapshot.exists) {
+                        gameState = snapshot.data();
+                        console.log('Game state updated:', gameState);
+                        updateGameUI();
+                    }
                 }, error => {
-                    console.error('Error in history listener:', error);
-                    showNotification('Unable to update game history. Please refresh the page.', 'warning');
+                    console.error('Error in game state listener:', error);
+                    showNotification('Unable to update game state. Please refresh the page.', 'warning');
                 });
+
+                // Listen for game history changes
+                collections.gameHistory
+                    .where('userId', '==', user.uid)
+                    .orderBy('timestamp', 'desc')
+                    .limit(10)
+                    .onSnapshot(snapshot => {
+                        console.log('Game history update received');
+                        updateRecordTable(snapshot);
+                    }, error => {
+                        console.error('Error in history listener:', error);
+                        showNotification('Unable to update game history. Please refresh the page.', 'warning');
+                    });
                 
-            // Listen for user balance changes
-            collections.users.doc(user.uid).onSnapshot(snapshot => {
-                if (snapshot.exists) {
-                    const userData = snapshot.data();
-                    walletBalance = parseFloat(userData.balance) || 0;
-                    document.getElementById('walletBalance').textContent = walletBalance.toFixed(2);
-                    console.log('User balance updated from listener:', walletBalance);
-                } else {
-                    console.error('User document does not exist in balance listener');
-                }
-            }, error => {
-                console.error('Error in user balance listener:', error);
-                showNotification('Error updating balance. Please refresh the page.', 'warning');
+                // Listen for user balance changes
+                collections.users.doc(user.uid).onSnapshot(snapshot => {
+                    if (snapshot.exists) {
+                        const userData = snapshot.data();
+                        walletBalance = parseFloat(userData.balance) || 0;
+                        document.getElementById('walletBalance').textContent = walletBalance.toFixed(2);
+                        console.log('User balance updated from listener:', walletBalance);
+                    } else {
+                        console.error('User document does not exist in balance listener');
+                    }
+                }, error => {
+                    console.error('Error in user balance listener:', error);
+                    showNotification('Error updating balance. Please refresh the page.', 'warning');
+                });
             });
         }
         
         // Add auth check at the start of your script
         document.addEventListener('DOMContentLoaded', function() {
-            // First, try to get the current user
-            const currentUser = auth.currentUser;
-            
-            if (!currentUser) {
-                // If no user is logged in, attempt to sign in anonymously
-                console.log('No user logged in, signing in anonymously...');
-                auth.signInAnonymously()
-                    .then(() => {
-                        console.log('Anonymous auth successful');
-                        // Continue with app initialization
-                        initializeApp();
-                    })
-                    .catch(error => {
-                        console.error('Error signing in anonymously:', error);
-                        showNotification('Error signing in anonymously. Some features may not work.', 'warning');
-                        // Still try to initialize the app
-                        initializeApp();
-                    });
-            } else {
-                // User is already logged in
-                console.log('User already logged in:', currentUser.uid);
-                initializeApp();
-            }
+            // Wait for auth state to be initialized
+            auth.onAuthStateChanged(function(user) {
+                if (!user) {
+                    // Redirect to login page if no user is logged in
+                    console.log('No user logged in, redirecting to auth page...');
+                    window.location.href = 'auth.html';
+                } else {
+                    // User is already logged in
+                    console.log('User already logged in:', user.uid);
+                    initializeApp();
+                }
+            });
         });
 
         // Move the initialization logic to a separate function
         async function initializeApp() {
             auth.onAuthStateChanged(async function(user) {
                 if (!user) {
-                    console.log('No user after auth state change, trying anonymous auth again...');
-                    try {
-                        await auth.signInAnonymously();
-                        console.log('Anonymous auth successful');
-                    } catch (error) {
-                        console.error('Error with anonymous auth:', error);
-                        showNotification('Authentication error. Some features may not work.', 'warning');
+                    console.log('No user after auth state change, redirecting to auth page...');
+                    window.location.href = 'auth.html';
+                    return;
+                }
+
+                console.log('Auth state changed, user is:', user.uid);
+                // Get user data from Firestore
+                try {
+                    const userDoc = await collections.users.doc(user.uid).get();
+                    if (userDoc.exists) {
+                        const userData = userDoc.data();
+                        walletBalance = parseFloat(userData.balance) || 0;
+                        console.log('User document exists, loaded balance:', walletBalance);
+                    } else {
+                        // Create a new user document if it doesn't exist
+                        console.log('Creating new user document for:', user.uid);
+                        await collections.users.doc(user.uid).set({
+                            balance: 0,
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                        walletBalance = 0;
+                        console.log('Created new user with balance:', walletBalance);
                     }
-                } else {
-                    console.log('Auth state changed, user is:', user.uid);
-                    // Get user data from Firestore
-                    try {
-                        const userDoc = await collections.users.doc(user.uid).get();
-                        if (userDoc.exists) {
-                            const userData = userDoc.data();
-                            walletBalance = parseFloat(userData.balance) || 0;
-                            console.log('User document exists, loaded balance:', walletBalance);
-                            
-                            // Removed code that gives starting balance to existing users with zero balance
-                        } else {
-                            // Create a new user document if it doesn't exist
-                            console.log('Creating new user document for:', user.uid);
-                            await collections.users.doc(user.uid).set({
-                                balance: 0, // Start with zero balance instead of 100
-                                isAnonymous: user.isAnonymous,
-                                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                            });
-                            walletBalance = 0;
-                            console.log('Created new user with balance:', walletBalance);
-                        }
-                        
-                        // Update wallet display
-                        document.getElementById('walletBalance').textContent = walletBalance.toFixed(2);
-                        
-                        // Setup listeners after authentication
-                        setupRealtimeListeners();
-                        
-                        // Initial record table update
-                        updateRecordTable();
-                    } catch (error) {
-                        console.error('Error loading/creating user data:', error);
-                        showNotification('Error loading user data', 'warning');
-                    }
+                    
+                    // Update wallet display
+                    document.getElementById('walletBalance').textContent = walletBalance.toFixed(2);
+                    
+                    // Setup listeners after authentication
+                    setupRealtimeListeners();
+                    
+                    // Initial record table update
+                    updateRecordTable();
+                } catch (error) {
+                    console.error('Error loading/creating user data:', error);
+                    showNotification('Error loading user data', 'warning');
                 }
             });
         }
@@ -860,15 +834,9 @@
             
             const user = auth.currentUser;
             if (!user) {
-                console.log('No user logged in, attempting anonymous sign-in');
-                try {
-                    await auth.signInAnonymously();
-                    console.log('Anonymous sign-in successful');
-                } catch (authError) {
-                    console.error('Anonymous sign-in failed:', authError);
-                showNotification('Please login first', 'warning');
+                console.log('No user logged in, redirecting to login page');
+                window.location.href = 'auth.html';
                 return false;
-                }
             }
 
             if (amount > walletBalance) {
@@ -919,44 +887,52 @@
                     }
                 };
                 
-                    let apiUrl = '';
-                    try {
-                        apiUrl = getApiUrl('/api/latest-result');
-                        console.log('Fetching result from:', apiUrl);
-                    } catch (urlError) {
-                        console.error('Error getting API URL:', urlError);
-                        apiUrl = '/api/latest-result'; // Fallback to relative URL
-                        console.log('Using fallback URL:', apiUrl);
-                    }
-                    
-                    const response = await fetch(apiUrl, fetchOptions);
+                let apiUrl = '';
+                try {
+                    // Always use the fixed port 3456
+                    apiUrl = 'http://127.0.0.1:3456/api/latest-result';
+                    console.log('Fetching result from:', apiUrl);
+                } catch (urlError) {
+                    console.error('Error getting API URL:', urlError);
+                    apiUrl = 'http://127.0.0.1:3456/api/latest-result'; // Keep consistent port in fallback
+                    console.log('Using fallback URL:', apiUrl);
+                }
+                
+                const response = await fetch(apiUrl, fetchOptions);
                 
                 if (!response.ok) {
                     console.error('Server returned error:', response.status, response.statusText);
-                    showNotification('Error fetching result from server, using fallback', 'warning');
+                    showNotification('Error connecting to server. Retrying...', 'warning');
                     
-                    // Fallback to client-side result generation
-                    const fallbackResult = createFallbackResult(completedPeriod);
-                    console.log('Created fallback result:', JSON.stringify(fallbackResult));
+                    // Retry the server connection up to 3 times
+                    for (let i = 0; i < 3; i++) {
+                        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between retries
+                        try {
+                            const retryResponse = await fetch(apiUrl, fetchOptions);
+                            if (retryResponse.ok) {
+                                const result = await retryResponse.json();
+                                if (result && typeof result.number === 'number') {
+                                    console.log('Server connection successful after retry!');
+                                    processResultAndDisplay(result, completedPeriod);
+                                    return;
+                                }
+                            }
+                        } catch (retryError) {
+                            console.error(`Retry ${i + 1} failed:`, retryError);
+                        }
+                    }
                     
-                    // Use the fallback result instead
-                    processResultAndDisplay(fallbackResult, completedPeriod);
+                    showNotification('Could not connect to server after multiple attempts. Please try again later.', 'error');
                     return;
                 }
                 
                 const result = await response.json();
+                console.log('Server connection successful!');
                 console.log('Raw result from server:', JSON.stringify(result));
                 
                 if (!result || typeof result.number !== 'number') {
                     console.error('Invalid result format:', result);
-                    showNotification('Invalid result format received from server, using fallback', 'warning');
-                    
-                    // Fallback to client-side result generation
-                    const fallbackResult = createFallbackResult(completedPeriod);
-                    console.log('Created fallback result due to invalid format:', JSON.stringify(fallbackResult));
-                    
-                    // Use the fallback result instead
-                    processResultAndDisplay(fallbackResult, completedPeriod);
+                    showNotification('Invalid result received from server. Please try again later.', 'error');
                     return;
                 }
                 
@@ -1515,20 +1491,11 @@
                 const user = auth.currentUser;
                 if (!user) {
                     console.error('No user logged in for saveGameResult');
-                    // Try to get anonymous auth
-                    try {
-                        await auth.signInAnonymously();
-                        console.log('Anonymous auth successful in saveGameResult');
-                        // Call this function again after anonymous auth
-                        return saveGameResult(period, result);
-                    } catch (authError) {
-                        console.error('Error signing in anonymously:', authError);
-                        showNotification('Authentication error. Game history may not be saved.', 'warning');
-                        throw new Error('Authentication required');
-                    }
+                    window.location.href = 'login.html';
+                    return;
                 }
                 
-                console.log('Current user for game history:', user.uid, user.isAnonymous ? '(anonymous)' : '');
+                console.log('Current user for game history:', user.uid);
                 
                 // Check if this result already exists for this user and period
                 try {
@@ -2365,36 +2332,6 @@ Current Balance: ₹${walletBalance.toFixed(2)}`;
             });
         });
 
-        // Add this helper function for fallback result generation
-        function createFallbackResult(period) {
-            // Generate a random number from 0 to 9
-            const number = Math.floor(Math.random() * 10);
-            
-            // Determine color based on number
-            let color;
-            if (number === 0) {
-                color = 'VIOLET';
-            } else if (number === 5) {
-                color = 'VIOLET GREEN'; 
-            } else if (number % 2 === 0) {
-                color = 'RED';
-            } else {
-                color = 'GREEN';
-            }
-            
-            // Determine size
-            const size = number >= 5 ? 'BIG' : 'SMALL';
-            
-            return {
-                number,
-                color,
-                size,
-                period,
-                timestamp: new Date().toISOString(),
-                isFallback: true
-            };
-        }
-        
         // Add this function to process and display the result
         async function processResultAndDisplay(result, completedPeriod) {
             try {

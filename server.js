@@ -14,44 +14,13 @@ const LOCAL_HISTORY_FILE = path.join(__dirname, 'local_game_history.json');
 
 // Global flag to track if the scheduler is running
 let isSchedulerRunning = false;
-let serverPort = process.env.PORT || 3000; // Use environment PORT or default to 3000
-
-// Function to check if a port is in use
-function isPortInUse(port) {
-  return new Promise((resolve) => {
-    const server = net.createServer()
-      .once('error', () => {
-        resolve(true); // Port is in use
-      })
-      .once('listening', () => {
-        server.close();
-        resolve(false); // Port is free
-      })
-      .listen(port);
-  });
-}
-
-// Function to find an available port
-async function findAvailablePort(startPort) {
-  // In production (Render), always use the provided PORT
-  if (process.env.PORT) {
-    return process.env.PORT;
-  }
-  
-  // Only search for available port in development
-  let port = startPort;
-  while (await isPortInUse(port)) {
-    console.log(`Port ${port} is in use, trying next port`);
-    port++;
-  }
-  return port;
-}
+let serverPort = 3456; // Fixed unique port number
 
 const app = express();
 
 // Configure CORS to allow requests from your domain
 app.use(cors({
-  origin: ['https://coloring-uv3a.onrender.com', 'http://localhost:3000'],
+  origin: ['http://127.0.0.1:3456', 'http://localhost:3456'],
   methods: ['GET', 'POST'],
   credentials: true
 }));
@@ -135,89 +104,62 @@ async function getPreviousResults(count = 2) {
 
 // Function to generate a mock result when Firestore is unavailable
 async function generateMockResult(period) {
-  // Get previous results to check for patterns
-  const previousResults = await getPreviousResults(2);
+  // Convert period string to a better numeric seed
+  const [datePart, periodPart] = period.split('-');
+  // Extract components from datePart (YYMMDDHHMI format)
+  const year = parseInt(datePart.substring(0, 2));
+  const month = parseInt(datePart.substring(2, 4));
+  const day = parseInt(datePart.substring(4, 6));
+  const hour = parseInt(datePart.substring(6, 8));
+  const minute = parseInt(datePart.substring(8, 10));
   
-  // Extract previous colors and sizes if they exist
-  const prevColors = previousResults.map(r => r.color);
-  const prevSizes = previousResults.map(r => r.size);
-  const prevNumbers = previousResults.map(r => r.number);
-  
-  console.log('Previous colors:', prevColors);
-  console.log('Previous sizes:', prevSizes);
-  console.log('Previous numbers:', prevNumbers);
-  
-  // Generate a deterministic result based on the period
-  // Use the period string as the seed for random generation
-  let color, number, size;
-  
-  // Convert period string to a numeric seed
-  const periodSeed = parseInt(period.replace(/\D/g, '')) || Date.now();
+  // Create a more unique seed by combining all components
+  const periodSeed = (year * 31 + day) * 24 * 60 + (hour * 60 + minute) + (periodPart === '1' ? 0 : 30);
   console.log('Using period seed for random generation:', periodSeed);
   
-  // Simple deterministic random function using the period seed
-  const seededRandom = () => {
-    // Simple LCG (Linear Congruential Generator) using the periodSeed
-    let x = periodSeed;
-    // These are standard values for a simple LCG
-    const a = 1664525;
-    const c = 1013904223;
-    const m = Math.pow(2, 32);
-    x = (a * x + c) % m;
-    return x / m; // Normalize to [0, 1)
+  // Improved seeded random function with better distribution
+  const seededRandom = (salt = 1) => {
+    let x = periodSeed + salt;
+    x = ((x << 13) ^ x) * 0x45d9f3b;
+    x = ((x << 17) ^ x) * 0x45d9f3b;
+    x = (x ^ (x >> 15)) >>> 0;
+    return (x % 1000000) / 1000000;
   };
   
-  // Generate color with deterministic logic
-  const colorRandom = seededRandom() * 100;
+  // Generate number first (0-9)
+  const numberRandom = seededRandom(1);
+  let number;
   
-  if (prevColors.length >= 2 && prevColors[0] === prevColors[1]) {
-    // If the same color appeared twice in a row, ensure we choose a different one
-    if (prevColors[0] === 'RED') {
-      color = colorRandom < 50 ? 'GREEN' : 'VIOLET';
-    } else if (prevColors[0] === 'GREEN') {
-      color = colorRandom < 50 ? 'RED' : 'VIOLET';
-    } else {
-      // If previous was VIOLET or VIOLET GREEN
-      color = colorRandom < 50 ? 'RED' : 'GREEN';
-    }
+  // More balanced number distribution
+  if (numberRandom < 0.1) {
+    number = 0; // 10% chance for 0
+  } else if (numberRandom < 0.2) {
+    number = 5; // 10% chance for 5
   } else {
-    // Normal distribution: 45% red, 45% green, 10% violet
-    if (colorRandom < 45) {
-      color = 'RED';
-    } else if (colorRandom < 90) {
-      color = 'GREEN';
-    } else {
-      color = 'VIOLET';
-    }
+    // Distribute remaining numbers (1-4, 6-9) evenly
+    const remainingNumbers = [1, 2, 3, 4, 6, 7, 8, 9];
+    const index = Math.floor(seededRandom(2) * remainingNumbers.length);
+    number = remainingNumbers[index];
   }
   
-  // Generate number based on color
-  if (color === 'VIOLET') {
-    // For violet, we can only have 0 or 5
-    number = seededRandom() < 0.5 ? 0 : 5;
-    
-    // If number is 5, it's both VIOLET and GREEN
-    if (number === 5) {
-      color = 'VIOLET GREEN';
-    }
-  } else if (color === 'RED') {
-    // For red, we need even numbers except 0
-    const evenNumbers = [2, 4, 6, 8];
-    const randomIndex = Math.floor(seededRandom() * evenNumbers.length);
-    number = evenNumbers[randomIndex];
+  // Determine color based on number and additional randomness
+  let color;
+  const colorRandom = seededRandom(3);
+  
+  if (number === 0) {
+    color = 'VIOLET';
+  } else if (number === 5) {
+    color = colorRandom < 0.5 ? 'VIOLET' : 'VIOLET GREEN';
+  } else if (number % 2 === 0) {
+    color = 'RED';
   } else {
-    // For green, we need odd numbers except 5 (already covered in VIOLET)
-    const oddNumbers = [1, 3, 7, 9];
-    const randomIndex = Math.floor(seededRandom() * oddNumbers.length);
-    number = oddNumbers[randomIndex];
+    color = 'GREEN';
   }
   
-  // Determine size based on number
-  size = number >= 5 ? 'BIG' : 'SMALL';
+  // Determine size
+  const size = number >= 5 ? 'BIG' : 'SMALL';
   
-  console.log(`Generated deterministic result for period ${period}: ${color}, ${number}, ${size}`);
-  
-  return { 
+  const result = { 
     number, 
     size, 
     color,
@@ -225,6 +167,9 @@ async function generateMockResult(period) {
     period,
     isMock: false
   };
+  
+  console.log(`Generated deterministic result for period ${period}:`, result);
+  return result;
 }
 
 // Result generation function with deterministic output
@@ -351,27 +296,55 @@ app.get('/api/latest-result', async (req, res) => {
     const completedPeriod = getCompletedPeriod();
     console.log('Getting result for completed period:', completedPeriod);
     
-    // Try to get existing result first
-    const docRef = db.collection('gameResults').doc(completedPeriod);
-    const doc = await docRef.get();
+    // Generate new result for this period
+    console.log('Generating new result for period:', completedPeriod);
+    const result = await generateMockResult(completedPeriod);
     
-    if (doc.exists) {
-      console.log('Found existing result for period:', completedPeriod);
-      return res.json(doc.data());
+    if (!result) {
+      console.error('Failed to generate result');
+      return res.status(500).json({ error: 'Failed to generate result' });
     }
     
-    // If no result exists, generate one
-    console.log('No existing result found, generating new result for period:', completedPeriod);
-    const result = await generateAndSaveResult(completedPeriod);
-    
-    if (result) {
-      res.json(result);
-    } else {
-      res.status(500).json({ error: 'Failed to generate result' });
+    // Save to local storage
+    try {
+      // Get existing history
+      let historyData = { results: [] };
+      if (fs.existsSync(LOCAL_HISTORY_FILE)) {
+        const fileContent = fs.readFileSync(LOCAL_HISTORY_FILE, 'utf8');
+        historyData = JSON.parse(fileContent);
+      }
+      
+      // Add new result
+      if (!Array.isArray(historyData.results)) {
+        historyData.results = [];
+      }
+      
+      // Remove existing result for this period if any
+      historyData.results = historyData.results.filter(r => r.period !== completedPeriod);
+      
+      // Add new result
+      historyData.results.push(result);
+      
+      // Keep only latest 100 results
+      if (historyData.results.length > 100) {
+        historyData.results = historyData.results.slice(-100);
+      }
+      
+      // Save back to file
+      fs.writeFileSync(LOCAL_HISTORY_FILE, JSON.stringify(historyData, null, 2));
+      console.log('Saved result to local storage:', result);
+    } catch (saveError) {
+      console.error('Error saving to local storage:', saveError);
+      // Continue even if save fails
     }
+    
+    // Return the result
+    console.log('Returning generated result:', result);
+    return res.json(result);
+    
   } catch (error) {
     console.error('Error in /api/latest-result:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 });
 
@@ -580,18 +553,7 @@ if (!isSchedulerRunning) {
   console.log('Result generation scheduler already running, skipping initialization');
 }
 
-// Start the server on an available port
-const DEFAULT_PORT = process.env.PORT || 3000;
-
-// Use an immediately invoked async function to start the server
-(async () => {
-  try {
-    const availablePort = await findAvailablePort(DEFAULT_PORT);
-    serverPort = availablePort; // Store the actual port being used
-    app.listen(availablePort, () => {
-      console.log(`Server running on port ${availablePort}`);
-    });
-  } catch (error) {
-    console.error('Error starting server:', error);
-  }
-})(); 
+// Start the server
+app.listen(serverPort, () => {
+  console.log(`Server running on fixed port ${serverPort}`);
+}); 
