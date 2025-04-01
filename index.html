@@ -255,10 +255,14 @@
     </script>
     <style>
         .number-ball {
-            background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 70%);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            position: relative;
+            background: radial-gradient(circle at 30% 15%, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.1) 60%);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4), inset 0 -4px 4px rgba(0,0,0,0.2);
             font-size: 1.25rem;
             font-weight: bold;
+            border: 2px solid rgba(255,255,255,0.5);
+            overflow: hidden;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
         }
         .timer-digit {
             aspect-ratio: 1;
@@ -279,9 +283,9 @@
                 padding: 0.5rem;
             }
             .number-ball {
-                width: 2.5rem !important;
-                height: 2.5rem !important;
-                font-size: 1rem;
+                width: 3rem !important;
+                height: 3rem !important;
+                font-size: 1.25rem;
             }
         }
         .wallet-card {
@@ -413,6 +417,64 @@
             30%, 50%, 70% { transform: translate(-50%, 0) translate3d(-4px, 0, 0); }
             40%, 60% { transform: translate(-50%, 0) translate3d(4px, 0, 0); }
         }
+
+        /* Enhanced number ball styling to match the image */
+        .number-ball {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle at 30% 15%, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.1) 60%);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4), 
+                        inset 0 -4px 4px rgba(0,0,0,0.2),
+                        inset 0 4px 4px rgba(255,255,255,0.4);
+            font-size: 1.5rem;
+            font-weight: bold;
+            border: 2px solid rgba(255,255,255,0.5);
+            overflow: hidden;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        }
+
+        .number-ball::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent 0%, rgba(255,255,255,0.2) 50%, transparent 100%);
+            transform: rotate(45deg);
+            animation: shine 3s infinite;
+            pointer-events: none;
+        }
+
+        .number-ball::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 40%;
+            background: linear-gradient(to top, rgba(0,0,0,0.2), transparent);
+            pointer-events: none;
+        }
+
+        @keyframes shine {
+            0% { transform: rotate(45deg) translateY(-100%); }
+            100% { transform: rotate(45deg) translateY(100%); }
+        }
+
+        .number-ball-violet {
+            background-color: #b739e4;
+        }
+
+        .number-ball-green {
+            background-color: #54cc75;
+        }
+
+        .number-ball-red {
+            background-color: #e74c3c;
+        }
     </style>
 </head>
 <body class="bg-gray-900 min-h-screen">
@@ -505,17 +567,17 @@
 
             <!-- Number Grid -->
             <div class="bg-gray-800 p-4 rounded-xl mb-4">
-                <div class="grid grid-cols-5 gap-2">
-                    <button onclick="betOnNumber(0)" class="w-12 h-12 rounded-full bg-violet-500 text-white mx-auto number-ball hover:scale-105 transition-transform">0</button>
-                    <button onclick="betOnNumber(1)" class="w-12 h-12 rounded-full bg-green-500 text-white mx-auto number-ball hover:scale-105 transition-transform">1</button>
-                    <button onclick="betOnNumber(2)" class="w-12 h-12 rounded-full bg-red-500 text-white mx-auto number-ball hover:scale-105 transition-transform">2</button>
-                    <button onclick="betOnNumber(3)" class="w-12 h-12 rounded-full bg-green-500 text-white mx-auto number-ball hover:scale-105 transition-transform">3</button>
-                    <button onclick="betOnNumber(4)" class="w-12 h-12 rounded-full bg-red-500 text-white mx-auto number-ball hover:scale-105 transition-transform">4</button>
-                    <button onclick="betOnNumber(5)" class="w-12 h-12 rounded-full bg-green-500 text-white mx-auto number-ball hover:scale-105 transition-transform">5</button>
-                    <button onclick="betOnNumber(6)" class="w-12 h-12 rounded-full bg-red-500 text-white mx-auto number-ball hover:scale-105 transition-transform">6</button>
-                    <button onclick="betOnNumber(7)" class="w-12 h-12 rounded-full bg-green-500 text-white mx-auto number-ball hover:scale-105 transition-transform">7</button>
-                    <button onclick="betOnNumber(8)" class="w-12 h-12 rounded-full bg-red-500 text-white mx-auto number-ball hover:scale-105 transition-transform">8</button>
-                    <button onclick="betOnNumber(9)" class="w-12 h-12 rounded-full bg-green-500 text-white mx-auto number-ball hover:scale-105 transition-transform">9</button>
+                <div class="grid grid-cols-5 gap-3">
+                    <button onclick="betOnNumber(0)" class="w-14 h-14 rounded-full text-white mx-auto number-ball number-ball-violet hover:scale-105 transition-transform">0</button>
+                    <button onclick="betOnNumber(1)" class="w-14 h-14 rounded-full text-white mx-auto number-ball number-ball-green hover:scale-105 transition-transform">1</button>
+                    <button onclick="betOnNumber(2)" class="w-14 h-14 rounded-full text-white mx-auto number-ball number-ball-red hover:scale-105 transition-transform">2</button>
+                    <button onclick="betOnNumber(3)" class="w-14 h-14 rounded-full text-white mx-auto number-ball number-ball-green hover:scale-105 transition-transform">3</button>
+                    <button onclick="betOnNumber(4)" class="w-14 h-14 rounded-full text-white mx-auto number-ball number-ball-red hover:scale-105 transition-transform">4</button>
+                    <button onclick="betOnNumber(5)" class="w-14 h-14 rounded-full text-white mx-auto number-ball number-ball-violet hover:scale-105 transition-transform">5</button>
+                    <button onclick="betOnNumber(6)" class="w-14 h-14 rounded-full text-white mx-auto number-ball number-ball-red hover:scale-105 transition-transform">6</button>
+                    <button onclick="betOnNumber(7)" class="w-14 h-14 rounded-full text-white mx-auto number-ball number-ball-green hover:scale-105 transition-transform">7</button>
+                    <button onclick="betOnNumber(8)" class="w-14 h-14 rounded-full text-white mx-auto number-ball number-ball-red hover:scale-105 transition-transform">8</button>
+                    <button onclick="betOnNumber(9)" class="w-14 h-14 rounded-full text-white mx-auto number-ball number-ball-green hover:scale-105 transition-transform">9</button>
                 </div>
             </div>
 
