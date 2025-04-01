@@ -154,25 +154,17 @@
                             walletBalance = parseFloat(userData.balance) || 0;
                             console.log('User document exists, loaded balance:', walletBalance);
                             
-                            // If the user has zero balance, give them a starting balance
-                            if (walletBalance === 0) {
-                                console.log('Existing user has zero balance, updating to starting balance');
-                                await collections.users.doc(user.uid).update({
-                                    balance: 100
-                                });
-                                walletBalance = 100;
-                                console.log('Updated existing user balance to:', walletBalance);
-                            }
+                            // Removed code that gives starting balance to existing users with zero balance
                         } else {
                             // Create a new user document if it doesn't exist
                             console.log('Creating new user document for:', user.uid);
                             await collections.users.doc(user.uid).set({
-                                balance: 100, // Give users a starting balance for better experience
+                                balance: 0, // Start with zero balance instead of 100
                                 isAnonymous: user.isAnonymous,
                                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
                             });
-                            walletBalance = 100;
-                            console.log('Created new user with starting balance:', walletBalance);
+                            walletBalance = 0;
+                            console.log('Created new user with balance:', walletBalance);
                         }
                         
                         // Update wallet display

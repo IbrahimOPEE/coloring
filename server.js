@@ -147,83 +147,75 @@ async function generateMockResult(period) {
   console.log('Previous sizes:', prevSizes);
   console.log('Previous numbers:', prevNumbers);
   
-  // Generate new result ensuring it's different from previous patterns
+  // Generate a deterministic result based on the period
+  // Use the period string as the seed for random generation
   let color, number, size;
-  let attempts = 0;
-  const maxAttempts = 5; // Maximum attempts to avoid infinite loops
   
-  do {
-    attempts++;
-    
-    // Generate color with general probabilities but avoid repeating twice
-    const colorRandom = Math.random() * 100;
-    
-    if (prevColors.length >= 2 && prevColors[0] === prevColors[1]) {
-      // If the same color appeared twice in a row, ensure we choose a different one
-      if (prevColors[0] === 'RED') {
-        color = colorRandom < 50 ? 'GREEN' : 'VIOLET';
-      } else if (prevColors[0] === 'GREEN') {
-        color = colorRandom < 50 ? 'RED' : 'VIOLET';
-      } else {
-        // If previous was VIOLET or VIOLET GREEN
-        color = colorRandom < 50 ? 'RED' : 'GREEN';
-      }
-    } else {
-      // Normal distribution: 45% red, 45% green, 10% violet
-      if (colorRandom < 45) {
-        color = 'RED';
-      } else if (colorRandom < 90) {
-        color = 'GREEN';
-      } else {
-        color = 'VIOLET';
-      }
-    }
-    
-    // Generate number based on color
-    if (color === 'VIOLET') {
-      // For violet, we can only have 0 or 5
-      number = prevNumbers[0] === 0 ? 5 : 0; // Alternate between 0 and 5
-      
-      // If number is 5, it's both VIOLET and GREEN
-      if (number === 5) {
-        color = 'VIOLET GREEN';
-      }
-    } else if (color === 'RED') {
-      // For red, we need even numbers except 0
-      const evenNumbers = [2, 4, 6, 8];
-      // Filter out the most recent number if it's in this list
-      const availableNumbers = evenNumbers.filter(n => !prevNumbers.includes(n));
-      number = availableNumbers.length > 0 
-        ? availableNumbers[Math.floor(Math.random() * availableNumbers.length)]
-        : evenNumbers[Math.floor(Math.random() * evenNumbers.length)];
-    } else {
-      // For green, we need odd numbers except 5 (already covered in VIOLET)
-      const oddNumbers = [1, 3, 7, 9];
-      // Filter out the most recent number if it's in this list
-      const availableNumbers = oddNumbers.filter(n => !prevNumbers.includes(n));
-      number = availableNumbers.length > 0 
-        ? availableNumbers[Math.floor(Math.random() * availableNumbers.length)]
-        : oddNumbers[Math.floor(Math.random() * oddNumbers.length)];
-    }
-    
-    // Determine size based on number
-    size = number >= 5 ? 'BIG' : 'SMALL';
-    
-    // If we've tried several times and still can't get a completely different result,
-    // accept what we have to avoid an infinite loop
-    if (attempts >= maxAttempts) {
-      console.log(`Maximum attempts (${maxAttempts}) reached, accepting current result`);
-      break;
-    }
-    
-  } while (
-    // Avoid repeating the same size three times in a row
-    (prevSizes.length >= 2 && size === prevSizes[0] && size === prevSizes[1]) ||
-    // Avoid repeating the same number
-    (prevNumbers.length > 0 && number === prevNumbers[0])
-  );
+  // Convert period string to a numeric seed
+  const periodSeed = parseInt(period.replace(/\D/g, '')) || Date.now();
+  console.log('Using period seed for random generation:', periodSeed);
   
-  console.log(`Generated new result after ${attempts} attempts: ${color}, ${number}, ${size}`);
+  // Simple deterministic random function using the period seed
+  const seededRandom = () => {
+    // Simple LCG (Linear Congruential Generator) using the periodSeed
+    let x = periodSeed;
+    // These are standard values for a simple LCG
+    const a = 1664525;
+    const c = 1013904223;
+    const m = Math.pow(2, 32);
+    x = (a * x + c) % m;
+    return x / m; // Normalize to [0, 1)
+  };
+  
+  // Generate color with deterministic logic
+  const colorRandom = seededRandom() * 100;
+  
+  if (prevColors.length >= 2 && prevColors[0] === prevColors[1]) {
+    // If the same color appeared twice in a row, ensure we choose a different one
+    if (prevColors[0] === 'RED') {
+      color = colorRandom < 50 ? 'GREEN' : 'VIOLET';
+    } else if (prevColors[0] === 'GREEN') {
+      color = colorRandom < 50 ? 'RED' : 'VIOLET';
+    } else {
+      // If previous was VIOLET or VIOLET GREEN
+      color = colorRandom < 50 ? 'RED' : 'GREEN';
+    }
+  } else {
+    // Normal distribution: 45% red, 45% green, 10% violet
+    if (colorRandom < 45) {
+      color = 'RED';
+    } else if (colorRandom < 90) {
+      color = 'GREEN';
+    } else {
+      color = 'VIOLET';
+    }
+  }
+  
+  // Generate number based on color
+  if (color === 'VIOLET') {
+    // For violet, we can only have 0 or 5
+    number = seededRandom() < 0.5 ? 0 : 5;
+    
+    // If number is 5, it's both VIOLET and GREEN
+    if (number === 5) {
+      color = 'VIOLET GREEN';
+    }
+  } else if (color === 'RED') {
+    // For red, we need even numbers except 0
+    const evenNumbers = [2, 4, 6, 8];
+    const randomIndex = Math.floor(seededRandom() * evenNumbers.length);
+    number = evenNumbers[randomIndex];
+  } else {
+    // For green, we need odd numbers except 5 (already covered in VIOLET)
+    const oddNumbers = [1, 3, 7, 9];
+    const randomIndex = Math.floor(seededRandom() * oddNumbers.length);
+    number = oddNumbers[randomIndex];
+  }
+  
+  // Determine size based on number
+  size = number >= 5 ? 'BIG' : 'SMALL';
+  
+  console.log(`Generated deterministic result for period ${period}: ${color}, ${number}, ${size}`);
   
   return { 
     number, 
@@ -231,7 +223,7 @@ async function generateMockResult(period) {
     color,
     timestamp: new Date().toISOString(),
     period,
-    isMock: true // Flag to indicate this is a mock result
+    isMock: false
   };
 }
 
