@@ -248,13 +248,59 @@
     <style>
         .number-ball {
             position: relative;
-            background: radial-gradient(circle at 30% 15%, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.1) 60%);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.4), inset 0 -4px 4px rgba(0,0,0,0.2);
-            font-size: 1.25rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 56px;
+            height: 56px;
+            font-size: 1.6rem;
             font-weight: bold;
-            border: 2px solid rgba(255,255,255,0.5);
+            border-radius: 50%;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.7), inset 0 -2px 6px rgba(0,0,0,0.4);
             overflow: hidden;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+            text-shadow: 0 1px 1px rgba(0,0,0,0.5);
+            z-index: 1;
+        }
+
+        .number-ball::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            border-radius: 50%;
+            border: 4px solid rgba(255,255,255,0.9);
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.4);
+            z-index: 0;
+        }
+
+        .number-ball::after {
+            content: '';
+            position: absolute;
+            top: -30%;
+            left: -30%;
+            width: 160%;
+            height: 160%;
+            background: linear-gradient(135deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.1) 30%, transparent 60%);
+            border-radius: 50%;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        .number-ball-violet {
+            background: radial-gradient(circle at 30% 30%, #db5fff 0%, #9e27cb 80%);
+            color: white;
+        }
+
+        .number-ball-green {
+            background: radial-gradient(circle at 30% 30%, #6cff80 0%, #27cb3f 80%);
+            color: white;
+        }
+
+        .number-ball-red {
+            background: radial-gradient(circle at 30% 30%, #ff6c6c 0%, #cb2727 80%);
+            color: white;
         }
         .timer-digit {
             aspect-ratio: 1;
@@ -416,56 +462,56 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background: radial-gradient(circle at 30% 15%, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.1) 60%);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.4), 
-                        inset 0 -4px 4px rgba(0,0,0,0.2),
-                        inset 0 4px 4px rgba(255,255,255,0.4);
-            font-size: 1.5rem;
+            width: 56px;
+            height: 56px;
+            font-size: 1.6rem;
             font-weight: bold;
-            border: 2px solid rgba(255,255,255,0.5);
+            border-radius: 50%;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.7), inset 0 -2px 6px rgba(0,0,0,0.4);
             overflow: hidden;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+            text-shadow: 0 1px 1px rgba(0,0,0,0.5);
+            z-index: 1;
         }
 
         .number-ball::before {
             content: '';
             position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
-            background: linear-gradient(45deg, transparent 0%, rgba(255,255,255,0.2) 50%, transparent 100%);
-            transform: rotate(45deg);
-            animation: shine 3s infinite;
-            pointer-events: none;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            border-radius: 50%;
+            border: 4px solid rgba(255,255,255,0.9);
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.4);
+            z-index: 0;
         }
 
         .number-ball::after {
             content: '';
             position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 40%;
-            background: linear-gradient(to top, rgba(0,0,0,0.2), transparent);
+            top: -30%;
+            left: -30%;
+            width: 160%;
+            height: 160%;
+            background: linear-gradient(135deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.1) 30%, transparent 60%);
+            border-radius: 50%;
+            z-index: 2;
             pointer-events: none;
         }
 
-        @keyframes shine {
-            0% { transform: rotate(45deg) translateY(-100%); }
-            100% { transform: rotate(45deg) translateY(100%); }
-        }
-
         .number-ball-violet {
-            background-color: #b739e4;
+            background: radial-gradient(circle at 30% 30%, #db5fff 0%, #9e27cb 80%);
+            color: white;
         }
 
         .number-ball-green {
-            background-color: #54cc75;
+            background: radial-gradient(circle at 30% 30%, #6cff80 0%, #27cb3f 80%);
+            color: white;
         }
 
         .number-ball-red {
-            background-color: #e74c3c;
+            background: radial-gradient(circle at 30% 30%, #ff6c6c 0%, #cb2727 80%);
+            color: white;
         }
     </style>
 </head>
