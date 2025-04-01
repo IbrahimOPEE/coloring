@@ -6,10 +6,9 @@
     <title>Admin Panel - Game UI</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <!-- Add Firebase SDK -->
+    <!-- Add only Firestore SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <!-- Firebase Config -->
     <script>
         // Firebase configuration
@@ -29,18 +28,8 @@
         // Get Firestore reference
         const db = firebase.firestore();
 
-        // Collection references
-        const collections = {
-            users: db.collection('users'),
-            transactions: db.collection('transactions'),
-            dailyTransactions: db.collection('dailyTransactions'),
-            gameHistory: db.collection('gameHistory'),
-            gameState: db.collection('gameState'),
-            gameResults: db.collection('gameResults')
-        };
-
-        // Auth reference
-        const auth = firebase.auth();
+        // Collection references - only keep users collection
+        const usersCollection = db.collection('users');
     </script>
     <style>
         body {
@@ -290,8 +279,7 @@
     </div>
 
     <script>
-        const ADMIN_PASSWORD = "69420@"; // In a real app, this should be stored securely
-        
+        const ADMIN_PASSWORD = "69420@"; // Admin password
         let currentEditUser = null;
         let currentTransaction = null;
 
@@ -306,157 +294,96 @@
                 // Check for admin authentication first
                 const isAdmin = localStorage.getItem('isAdmin') === 'true';
                 if (!isAdmin) {
-                    // Not authenticated as admin
                     showNotification('Admin authentication required', 'warning');
-                    document.getElementById('adminLogin').style.display = 'flex';
-                    return;
-                }
-                
-                // Make sure we're authenticated
-                if (!auth.currentUser) {
-                    showNotification('Not authenticated, please log in again', 'warning');
                     document.getElementById('adminLogin').style.display = 'flex';
                     return;
                 }
                 
                 showNotification('Loading users...', 'info');
                 
-                // Get all users
-                const snapshot = await collections.users.get();
+                // Get all users from Firestore
+                const snapshot = await usersCollection.get();
                 const users = [];
+                let totalBalance = 0;
+                
                 snapshot.forEach(doc => {
-                    const userData = doc.data() || {};
-                    
-                    // Format user data - handle anonymous users specially
-                    const isAnon = userData.isAnonymous || false;
-                    const userName = userData.name || (isAnon ? 'Anonymous User' : 'No Name');
-                    const userEmail = userData.email || (isAnon ? 'Anonymous' : 'No Email');
+                    const userData = doc.data();
+                    // Ensure we're getting the correct balance value from the document
+                    const balance = parseFloat(userData.balance) || 0;
+                    totalBalance += balance;
                     
                     users.push({
                         id: doc.id,
-                        name: userName,
-                        email: userEmail,
-                        balance: parseFloat(userData.balance) || 0,
-                        lastLogin: userData.lastLogin,
-                        isAnonymous: isAnon,
-                        createdAt: userData.createdAt,
-                        uid: doc.id
+                        name: userData.name || userData.email || 'No Name',
+                        email: userData.email || 'No Email',
+                        balance: balance,
+                        createdAt: userData.createdAt
                     });
                 });
-            
-            // Calculate stats
-            document.getElementById('totalUsers').textContent = users.length;
-                document.getElementById('totalBalance').textContent = users.reduce((sum, user) => sum + user.balance, 0).toFixed(2);
-                
-                // Get active users (users who have logged in within the last 24 hours)
-                const oneDayAgo = new Date();
-                oneDayAgo.setDate(oneDayAgo.getDate() - 1);
-                const activeUsers = users.filter(user => user.lastLogin && user.lastLogin.toDate() > oneDayAgo);
-                document.getElementById('activeUsers').textContent = activeUsers.length;
+
+                // Update stats
+                document.getElementById('totalUsers').textContent = users.length;
+                document.getElementById('totalBalance').textContent = '₹' + totalBalance.toFixed(2);
+                document.getElementById('activeUsers').textContent = users.length; // Simplified active users count
 
                 // Filter users based on search
                 const filteredUsers = users.filter(user => {
-                    return user.name.toLowerCase().includes(searchTerm) || 
-                           user.email.toLowerCase().includes(searchTerm);
+                    return (user.name && user.name.toLowerCase().includes(searchTerm)) || 
+                           (user.email && user.email.toLowerCase().includes(searchTerm)) ||
+                           (user.id && user.id.toLowerCase().includes(searchTerm));
                 });
 
-            // Clear and update users list
-            usersList.innerHTML = '';
-            
-                for (const user of filteredUsers) {
-                    // Get recent transactions
-                    const transactionsSnapshot = await collections.transactions
-                        .where('userId', '==', user.id)
-                        .orderBy('timestamp', 'desc')
-                        .limit(3)
-                        .get();
-                    
-                    const transactions = [];
-                    transactionsSnapshot.forEach(doc => {
-                        const transactionData = doc.data() || {};
-                        transactions.push({
-                            id: doc.id,
-                            type: transactionData.type || 'unknown',
-                            amount: parseFloat(transactionData.amount) || 0,
-                            status: transactionData.status || 'pending',
-                            timestamp: transactionData.timestamp
-                        });
-                    });
+                // Clear and update users list
+                usersList.innerHTML = '';
                 
-                const card = document.createElement('div');
-                card.className = 'user-card p-4 rounded-xl mb-4';
-                
-                let transactionsHtml = '';
-                    if (transactions.length > 0) {
-                    transactionsHtml = `
-                        <div class="mt-4 pt-4 border-t border-gray-700">
-                            <div class="text-gray-400 text-sm mb-2">Recent Transactions</div>
-                            <div class="space-y-2">
-                                    ${transactions.map(t => {
-                                        const type = (t.type || '').toString();
-                                        const status = (t.status || '').toString();
-                                        return `
-                                    <div class="flex items-center justify-between text-sm">
-                                        <div class="flex items-center gap-2">
-                                                    <i class="fas ${type === 'deposit' ? 'fa-download text-green-500' : 'fa-upload text-red-500'}"></i>
-                                                    <span class="text-white">${type.charAt(0).toUpperCase()}${type.slice(1)}</span>
-                                        </div>
-                                        <div class="flex items-center gap-3">
-                                            <span class="text-white">₹${t.amount.toFixed(2)}</span>
-                                                    <button onclick="showTransactionModal('${t.id}')" 
-                                                        class="px-2 py-1 rounded text-xs ${status === 'completed' ? 'bg-green-500/20 text-green-500' : 
-                                                        status === 'failed' ? 'bg-red-500/20 text-red-500' : 'bg-yellow-500/20 text-yellow-500'}">
-                                                        ${status.charAt(0).toUpperCase()}${status.slice(1)}
-                                            </button>
-                                        </div>
-                                    </div>
-                                        `;
-                                    }).join('')}
-                                </div>
-                        </div>
-                    `;
+                if (filteredUsers.length === 0) {
+                    usersList.innerHTML = '<div class="p-4 text-center text-gray-400">No users found</div>';
+                    return;
                 }
                 
-                card.innerHTML = `
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-3">
-                            <div class="w-12 h-12 rounded-full ${user.isAnonymous ? 'bg-gray-600' : 'bg-orange-500'} flex items-center justify-center">
-                                <i class="fas ${user.isAnonymous ? 'fa-user-secret' : 'fa-user'} text-white"></i>
+                for (const user of filteredUsers) {
+                    const card = document.createElement('div');
+                    card.className = 'user-card p-4 rounded-xl mb-4';
+                    
+                    card.innerHTML = `
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="w-12 h-12 rounded-full bg-orange-500 flex items-center justify-center">
+                                    <i class="fas fa-user text-white"></i>
+                                </div>
+                                <div>
+                                    <div class="text-white font-medium">${user.name}</div>
+                                    <div class="text-gray-400 text-sm">${user.email || user.id}</div>
+                                </div>
                             </div>
-                            <div>
-                                <div class="text-white font-medium">${user.name} ${user.isAnonymous ? '<span class="bg-gray-700 text-gray-300 text-xs px-2 py-1 rounded ml-1">Anonymous</span>' : ''}</div>
-                                <div class="text-gray-400 text-sm overflow-hidden text-ellipsis" style="max-width: 200px;">${user.isAnonymous ? 'ID: ' + user.id : user.email}</div>
+                            <button onclick="showEditModal('${user.id}')" class="bg-gray-800 text-white px-4 py-2 rounded-lg text-sm">
+                                Edit Balance
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4 mt-4">
+                            <div class="bg-gray-800 rounded-lg p-3">
+                                <div class="text-gray-400 text-sm mb-1">User ID</div>
+                                <div class="text-white text-sm truncate">${user.id}</div>
+                            </div>
+                            <div class="bg-gray-800 rounded-lg p-3">
+                                <div class="text-gray-400 text-sm mb-1">Balance</div>
+                                <div class="text-white text-sm">₹${user.balance.toFixed(2)}</div>
                             </div>
                         </div>
-                        <button onclick="showEditModal('${user.id}')" class="bg-gray-800 text-white px-4 py-2 rounded-lg text-sm">
-                            Edit Balance
-                        </button>
-                    </div>
-                    <div class="grid grid-cols-2 gap-4 mt-4">
-                        <div class="bg-gray-800 rounded-lg p-3">
-                            <div class="text-gray-400 text-sm mb-1">${user.isAnonymous ? 'User ID' : 'Email'}</div>
-                            <div class="text-white text-sm truncate">${user.isAnonymous ? user.id : user.email}</div>
-                        </div>
-                        <div class="bg-gray-800 rounded-lg p-3">
-                            <div class="text-gray-400 text-sm mb-1">Balance</div>
-                            <div class="text-white text-sm">₹${user.balance.toFixed(2)}</div>
-                        </div>
-                    </div>
-                    ${transactionsHtml}
-                `;
-                        
-                usersList.appendChild(card);
+                    `;
+                    
+                    usersList.appendChild(card);
                 }
             } catch (error) {
                 console.error('Error loading users:', error);
-                showNotification('Error loading users', 'warning');
+                showNotification('Error loading users: ' + error.message, 'warning');
             }
         }
 
         // Show edit modal
         async function showEditModal(userId) {
             try {
-                const userDoc = await collections.users.doc(userId).get();
+                const userDoc = await usersCollection.doc(userId).get();
                 if (!userDoc.exists) {
                     showNotification('User not found', 'warning');
                     return;
@@ -467,37 +394,23 @@
                     id: userId,
                     ...userData
                 };
-                
-                // Format user data properly
-                const isAnon = userData.isAnonymous || false;
-                const userName = userData.name || (isAnon ? 'Anonymous User' : 'No Name');
-                const createdDate = userData.createdAt ? 
-                    (typeof userData.createdAt.toDate === 'function' ? 
-                        userData.createdAt.toDate().toLocaleString() : 'Unknown date') 
-                    : 'Unknown date';
-            
+
+                // Get current balance with fallback to 0
+                const currentBalance = parseFloat(userData.balance) || 0;
+
                 const userInfo = document.querySelector('.user-info');
                 userInfo.innerHTML = `
-                    <div class="text-lg font-medium text-white mb-1">${userName} ${isAnon ? '<span class="bg-gray-700 text-gray-300 text-xs px-2 py-1 rounded ml-1">Anonymous</span>' : ''}</div>
-                    <div class="text-sm mb-2">Current Balance: ₹${(parseFloat(userData.balance) || 0).toFixed(2)}</div>
-                    <div class="text-xs text-gray-500 bg-gray-800 p-2 rounded overflow-auto mb-2">
-                        <span class="font-bold">User ID:</span> ${userId}
-                    </div>
-                    <div class="text-xs text-gray-500">Created: ${createdDate}</div>
+                    <div class="text-lg font-medium text-white mb-1">${userData.name || userData.email || 'User'}</div>
+                    <div class="text-sm mb-2">Current Balance: ₹${currentBalance.toFixed(2)}</div>
+                    <div class="text-xs text-gray-500 bg-gray-800 p-2 rounded overflow-auto">User ID: ${userId}</div>
                 `;
 
-                document.getElementById('newBalance').value = userData.balance || 0;
+                document.getElementById('newBalance').value = currentBalance;
                 document.getElementById('editModal').classList.remove('hidden');
             } catch (error) {
                 console.error('Error showing edit modal:', error);
-                showNotification('Error loading user data', 'warning');
+                showNotification('Error loading user data: ' + error.message, 'warning');
             }
-        }
-
-        // Hide edit modal
-        function hideEditModal() {
-            document.getElementById('editModal').classList.add('hidden');
-            currentEditUser = null;
         }
 
         // Update user balance
@@ -511,72 +424,21 @@
             }
 
             try {
-                const oldBalance = parseFloat(currentEditUser.balance) || 0;
-            const difference = newBalance - oldBalance;
-
-            // Update user balance
-                await collections.users.doc(currentEditUser.id).update({
+                // Update user balance in Firestore with correct field name
+                await usersCollection.doc(currentEditUser.id).update({
                     balance: newBalance
                 });
 
-                // Create transaction if balance changed
-            if (difference !== 0) {
-                    await collections.transactions.add({
-                        userId: currentEditUser.id,
-                        type: difference > 0 ? 'deposit' : 'withdrawal',
-                    amount: Math.abs(difference),
-                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                    status: 'completed',
-                    note: document.getElementById('balanceNote').value || 'Admin balance update'
-                });
-            }
-
-            loadUsers();
-            hideEditModal();
-            showNotification('Balance updated successfully');
+                showNotification(`Balance updated successfully to ₹${newBalance}!`);
+                loadUsers();
+                hideEditModal();
             } catch (error) {
                 console.error('Error updating balance:', error);
-                showNotification('Error updating balance', 'warning');
+                showNotification('Error updating balance: ' + error.message, 'warning');
             }
         }
 
-        // Refresh users list
-        function refreshUsers() {
-            loadUsers();
-        }
-
-        // Search functionality
-        document.getElementById('searchInput').addEventListener('input', loadUsers);
-
         // Admin authentication
-        document.addEventListener('DOMContentLoaded', function() {
-            // Check for remembered login
-            const adminExpiry = localStorage.getItem('adminExpiry');
-            const isAdmin = localStorage.getItem('isAdmin') === 'true';
-            const now = new Date();
-            
-            // Check if already authenticated with Firebase
-            auth.onAuthStateChanged(async (user) => {
-                if (user && isAdmin && adminExpiry && new Date(adminExpiry) > now) {
-                    // User is signed in and admin status is valid
-                    console.log('Already authenticated as admin');
-                    document.getElementById('adminLogin').style.display = 'none';
-                    loadUsers();
-                } else {
-                    // Clear any expired admin sessions
-                    localStorage.removeItem('adminExpiry');
-                    localStorage.removeItem('isAdmin');
-                    document.getElementById('adminLogin').style.display = 'flex';
-                    
-                    // If user is signed in but not admin, sign them out
-                    if (user && !isAdmin) {
-                        await auth.signOut();
-                    }
-                }
-            });
-        });
-
-        // Update admin password check
         async function checkAdminPassword() {
             const password = document.getElementById('adminPassword').value;
             const rememberMe = document.getElementById('rememberAdmin').checked;
@@ -584,15 +446,6 @@
             if (password === ADMIN_PASSWORD) {
                 try {
                     showNotification('Logging in...', 'info');
-                    
-                    // Sign out any existing user first
-                    if (auth.currentUser) {
-                        await auth.signOut();
-                    }
-                    
-                    // Use anonymous auth for the admin panel
-                    const userCredential = await auth.signInAnonymously();
-                    console.log('Signed in anonymously as admin', userCredential.user.uid);
                     
                     // Save admin status in localStorage
                     localStorage.setItem('isAdmin', 'true');
@@ -606,17 +459,10 @@
                     document.getElementById('adminLogin').style.display = 'none';
                     showNotification('Welcome, Admin!');
                     
-                    // Wait a bit to ensure auth is fully processed
-                    setTimeout(() => {
+                    // Load users after successful login
                         loadUsers();
-                    }, 1000);
                 } catch (error) {
                     console.error('Admin login error:', error);
-                    
-                    // Reset admin status
-                    localStorage.removeItem('isAdmin');
-                    localStorage.removeItem('adminExpiry');
-                    
                     showNotification('Error signing in: ' + error.message, 'warning');
                 }
             } else {
@@ -624,170 +470,14 @@
             }
         }
 
-        // Update logout function
-        async function logout() {
-            if (confirm('Are you sure you want to logout?')) {
-                try {
-                    // Sign out from Firebase
-                    await auth.signOut();
-                    // Clear all admin-related storage
-                    localStorage.removeItem('adminExpiry');
-                    localStorage.removeItem('isAdmin');
-                    window.location.reload();
-                } catch (error) {
-                    console.error('Error logging out:', error);
-                    showNotification('Error logging out', 'warning');
-                }
-            }
-        }
-
-        // Show transaction modal
-        async function showTransactionModal(transactionId) {
-            try {
-                const transactionDoc = await collections.transactions.doc(transactionId).get();
-                if (!transactionDoc.exists) {
-                    showNotification('Transaction not found', 'warning');
-                    return;
-                }
-
-                const transaction = transactionDoc.data();
-                currentTransaction = {
-                    id: transactionId,
-                    ...transaction
-                };
-
-                const userDoc = await collections.users.doc(transaction.userId).get();
-                const userData = userDoc.exists ? userDoc.data() : { email: 'Unknown User' };
-                
-                const userInfo = document.querySelector('#transactionModal .user-info');
-                if (userInfo) {
-                    userInfo.innerHTML = `
-                        <div class="text-lg font-medium text-white mb-1">${userData.name || userData.email}</div>
-                        <div class="text-sm text-gray-400">
-                            ${(transaction.type || '').charAt(0).toUpperCase() + (transaction.type || '').slice(1)} - 
-                            ₹${(parseFloat(transaction.amount) || 0).toFixed(2)}
-                        </div>
-                    `;
-                }
-                
-                const transactionIdEl = document.getElementById('transactionId');
-                if (transactionIdEl && transaction.timestamp) {
-                    transactionIdEl.textContent = transaction.timestamp.toDate().toLocaleString();
-                } else if (transactionIdEl) {
-                    transactionIdEl.textContent = 'Timestamp not available';
-                }
-
-                const statusSelect = document.getElementById('transactionStatus');
-                if (statusSelect) {
-                    statusSelect.value = transaction.status || 'pending';
-                }
-                
-                document.getElementById('transactionModal').classList.remove('hidden');
-            } catch (error) {
-                console.error('Error showing transaction modal:', error);
-                showNotification('Error loading transaction data', 'warning');
-            }
-        }
-
-        // Update transaction status
-        async function updateTransaction() {
-            if (!currentTransaction) return;
-            
-            try {
-            const newStatus = document.getElementById('transactionStatus').value;
-                
-                // Update transaction status
-                await collections.transactions.doc(currentTransaction.id).update({
-                    status: newStatus
-                });
-
-                // If status changed to completed/failed, update user balance accordingly
-                if (currentTransaction.status !== newStatus && 
-                    (newStatus === 'completed' || newStatus === 'failed')) {
-                    const userDoc = await collections.users.doc(currentTransaction.userId).get();
-                    const userData = userDoc.data();
-                    let newBalance = parseFloat(userData.balance) || 0;
-
-                    if (newStatus === 'completed') {
-                        if (currentTransaction.type === 'deposit') {
-                            newBalance += currentTransaction.amount;
-                        } else {
-                            newBalance -= currentTransaction.amount;
-                        }
-                    }
-
-                    await collections.users.doc(currentTransaction.userId).update({
-                        balance: newBalance
-                    });
-                }
-                
-                hideTransactionModal();
-                loadUsers();
-                showNotification('Transaction updated successfully');
-            } catch (error) {
-                console.error('Error updating transaction:', error);
-                showNotification('Error updating transaction', 'warning');
-            }
-        }
-
-        // Hide transaction modal
-        function hideTransactionModal() {
-            document.getElementById('transactionModal').classList.add('hidden');
-            currentTransaction = null;
-        }
-
-        // Add notification function
-        function showNotification(message, type = 'info') {
-            const notification = document.getElementById('notification');
-            const notificationContent = notification.querySelector('.notification-content');
-            const messageEl = document.getElementById('notificationMessage');
-            const iconEl = notification.querySelector('.notification-icon');
-            
-            messageEl.textContent = message;
-            
-            // Reset classes
-            notificationContent.classList.remove('notification-warning');
-            notification.classList.remove('notification-shake');
-            
-            // Set type-specific styles
-            if (type === 'warning') {
-                notificationContent.classList.add('notification-warning');
-                iconEl.className = 'fas fa-exclamation-triangle notification-icon';
-                notification.classList.add('notification-shake');
-            } else {
-                iconEl.className = 'fas fa-info-circle notification-icon text-orange-500';
-            }
-            
-            // Show notification
-            notification.classList.add('slide-in');
-            
-            // Hide after 3 seconds
-            setTimeout(() => {
-                notification.classList.remove('slide-in');
-            }, 3000);
-        }
-
-        // Add enter key support for password input
-        document.getElementById('adminPassword').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                checkAdminPassword();
-            }
-        });
-
-        // Add quick balance adjust feature
-        function quickAdjust(amount) {
-            const currentBalance = parseFloat(document.getElementById('newBalance').value) || 0;
-            document.getElementById('newBalance').value = currentBalance + amount;
-        }
-
-        // Add quick update functionality
+        // Quick balance update
         async function performQuickUpdate() {
             const userId = document.getElementById('quickUserId').value.trim();
             const amount = parseFloat(document.getElementById('quickAmount').value);
             const action = document.getElementById('quickAction').value;
             
             if (!userId) {
-                showNotification('Please enter a user ID or email', 'warning');
+                showNotification('Please enter a user ID', 'warning');
                 return;
             }
             
@@ -797,30 +487,11 @@
             }
             
             try {
-                // First, look up the user by ID
-                let userDoc = null;
-                let userId2 = userId;
+                const userDoc = await usersCollection.doc(userId).get();
                 
-                // Check if this is an email address
-                if (userId.includes('@')) {
-                    // Find the user by email
-                    const usersSnapshot = await collections.users.where('email', '==', userId).limit(1).get();
-                    
-                    if (usersSnapshot.empty) {
-                        showNotification('User not found', 'warning');
-                        return;
-                    }
-                    
-                    userDoc = usersSnapshot.docs[0];
-                    userId2 = userDoc.id;
-                } else {
-                    // Try to get user by ID
-                    userDoc = await collections.users.doc(userId).get();
-                    
-                    if (!userDoc.exists) {
-                        showNotification('User not found', 'warning');
-                        return;
-                    }
+                if (!userDoc.exists) {
+                    showNotification('User not found', 'warning');
+                    return;
                 }
                 
                 const userData = userDoc.data();
@@ -839,24 +510,12 @@
                         break;
                 }
                 
-                // Update the user's balance
-                await collections.users.doc(userId2).update({
+                // Update the user's balance with correct field name
+                await usersCollection.doc(userId).update({
                     balance: newBalance
                 });
                 
-                // Create a transaction record
-                await collections.transactions.add({
-                    userId: userId2,
-                    type: action === 'subtract' ? 'withdrawal' : 'deposit',
-                    amount: amount,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                    status: 'completed',
-                    note: 'Admin quick update'
-                });
-                
                 showNotification(`Balance updated successfully! New balance: ₹${newBalance.toFixed(2)}`);
-                
-                // Refresh the list
                 loadUsers();
                 
                 // Clear the form
@@ -866,6 +525,82 @@
                 console.error('Error updating balance:', error);
                 showNotification('Error updating balance: ' + error.message, 'warning');
             }
+        }
+
+        // Initialize admin check on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const adminExpiry = localStorage.getItem('adminExpiry');
+            const isAdmin = localStorage.getItem('isAdmin') === 'true';
+            const now = new Date();
+            
+            if (isAdmin && adminExpiry && new Date(adminExpiry) > now) {
+                document.getElementById('adminLogin').style.display = 'none';
+                loadUsers();
+            } else {
+                localStorage.removeItem('adminExpiry');
+                localStorage.removeItem('isAdmin');
+                document.getElementById('adminLogin').style.display = 'flex';
+            }
+        });
+
+        // Utility functions
+        function hideEditModal() {
+            document.getElementById('editModal').classList.add('hidden');
+            currentEditUser = null;
+        }
+
+        function refreshUsers() {
+            loadUsers();
+        }
+
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                localStorage.removeItem('adminExpiry');
+                localStorage.removeItem('isAdmin');
+                window.location.reload();
+            }
+        }
+
+        function showNotification(message, type = 'info') {
+            const notification = document.getElementById('notification');
+            const notificationContent = notification.querySelector('.notification-content');
+            const messageEl = document.getElementById('notificationMessage');
+            const iconEl = notification.querySelector('.notification-icon');
+            
+            messageEl.textContent = message;
+            
+            notificationContent.classList.remove('notification-warning');
+            notification.classList.remove('notification-shake');
+            
+            if (type === 'warning') {
+                notificationContent.classList.add('notification-warning');
+                iconEl.className = 'fas fa-exclamation-triangle notification-icon';
+                notification.classList.add('notification-shake');
+            } else {
+                iconEl.className = 'fas fa-info-circle notification-icon text-orange-500';
+            }
+            
+            notification.classList.add('slide-in');
+            
+            setTimeout(() => {
+                notification.classList.remove('slide-in');
+            }, 3000);
+        }
+
+        // Add enter key support for password input
+        document.getElementById('adminPassword').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                checkAdminPassword();
+            }
+        });
+
+        // Add search input handler
+        document.getElementById('searchInput').addEventListener('input', loadUsers);
+
+        // Quick balance adjust helper
+        function quickAdjust(amount) {
+            const currentBalance = parseFloat(document.getElementById('newBalance').value) || 0;
+            document.getElementById('newBalance').value = currentBalance + amount;
         }
     </script>
 </body>

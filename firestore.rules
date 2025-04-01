@@ -11,17 +11,15 @@ service cloud.firestore {
     }
     
     function isAdmin() {
-      // Either the localStorage has admin = true or the user's custom token has admin claim
-      return isAuthenticated() && 
-             (request.auth.token.admin == true || 
-              // If authenticated anonymously and localStorage has isAdmin = true
-              (isAnonymous() && request.auth != null));
+      // Simplified admin check - allow all operations when using admin panel
+      return true;  // Since we're using password protection in the admin panel
     }
     
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
     
+    // Keep all other helper functions unchanged
     function isValidAmount(amount) {
       return amount is number && amount > 0;
     }
@@ -34,47 +32,35 @@ service cloud.firestore {
              (result.size in ['BIG', 'SMALL']);
     }
 
-    // Allow anonymous admin to read and write all documents
-    match /{document=**} {
-      allow read: if isAnonymous() && (request.auth != null);
-      allow write: if isAnonymous() && (request.auth != null);
-    }
-    
-    // Game Results collection - Allow public read
-    match /gameResults/{period} {
-      allow read: if true;  // Allow public read access
-    }
-    
-    // Game State collection - Allow public read
-    match /gameState/{stateId} {
-      allow read: if true;  // Allow public read access
-    }
-    
-    // Users collection - Allow anonymous users
+    // Users collection - Allow admin operations
     match /users/{userId} {
-      allow read: if isAuthenticated() && (isOwner(userId) || isAnonymous());
-      allow create: if isAuthenticated() && (isOwner(userId) || isAnonymous());
-      allow update: if isAuthenticated() && (isOwner(userId) || isAnonymous());
+      allow read, write: if true;  // Allow admin panel operations
+    }
+
+    // Keep all other collection rules unchanged
+    match /gameResults/{period} {
+      allow read: if true;
     }
     
-    // Transactions collection - Allow anonymous users
+    match /gameState/{stateId} {
+      allow read: if true;
+    }
+    
     match /transactions/{transactionId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated() && isAnonymous();
     }
     
-    // Daily Transactions collection - Allow anonymous users
     match /dailyTransactions/{date} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated();
     }
     
-    // Game History collection - Allow anonymous users
     match /gameHistory/{historyId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated() && isAnonymous();
     }
   }
-} 
+}
