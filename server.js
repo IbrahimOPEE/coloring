@@ -94,6 +94,60 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// Admin API endpoints for admin panel
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    // Get all users from Firestore
+    const snapshot = await db.collection('users').get();
+    const users = [];
+    let totalBalance = 0;
+    
+    snapshot.forEach(doc => {
+      const userData = doc.data();
+      const balance = parseFloat(userData.balance) || 0;
+      totalBalance += balance;
+      
+      users.push({
+        id: doc.id,
+        name: userData.name || userData.email || 'No Name',
+        email: userData.email || 'No Email',
+        balance: balance,
+        createdAt: userData.createdAt ? userData.createdAt.toDate().toISOString() : new Date().toISOString()
+      });
+    });
+    
+    res.json({
+      users,
+      totalBalance,
+      activeUsers: users.length
+    });
+  } catch (error) {
+    console.error('Error fetching users for admin panel:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Endpoint to update user balance
+app.post('/api/admin/update-balance', async (req, res) => {
+  try {
+    const { userId, balance } = req.body;
+    
+    if (!userId || balance === undefined || isNaN(parseFloat(balance))) {
+      return res.status(400).json({ error: 'Invalid request parameters' });
+    }
+    
+    // Update the user balance in Firestore
+    await db.collection('users').doc(userId).update({
+      balance: parseFloat(balance)
+    });
+    
+    res.json({ success: true, message: 'Balance updated successfully' });
+  } catch (error) {
+    console.error('Error updating user balance:', error);
+    res.status(500).json({ error: 'Failed to update balance' });
+  }
+});
+
 // New endpoint to track bets in real-time
 app.post('/api/place-bet', async (req, res) => {
   try {
