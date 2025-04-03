@@ -148,6 +148,9 @@
                     // Setup listeners after authentication
                     setupRealtimeListeners();
                     
+                    // Start polling for bet statistics
+                    startBetStatisticsPolling();
+                    
                     // Initial record table update
                     updateRecordTable();
                 } catch (error) {
@@ -624,7 +627,7 @@
             </div>
 
             <!-- Add this before the closing game-container div -->
-            <div class="bg-[#1a1f2e] rounded-xl overflow-hidden mb-20"> <!-- Increased margin-bottom from mb-4 to mb-20 -->
+            <div class="bg-[#1a1f2e] rounded-xl overflow-hidden mb-4"> <!-- Changed mb-20 to mb-4 -->
                 <div class="p-4 border-b border-gray-800">
                     <h3 class="text-white font-medium">Record</h3>
                 </div>
@@ -642,6 +645,26 @@
                             <!-- Records will be added here dynamically -->
                         </tbody>
                     </table>
+                </div>
+            </div>
+            
+            <!-- Betting Statistics Panel -->
+            <div class="bg-[#1a1f2e] rounded-xl overflow-hidden mb-20">
+                <div class="p-4 border-b border-gray-800 flex justify-between items-center">
+                    <h3 class="text-white font-medium">Current Betting Statistics</h3>
+                    <span class="text-orange-500 text-xs">Minority Wins!</span>
+                </div>
+                <div class="p-4" id="betStatistics">
+                    <!-- Bet statistics will be added here dynamically -->
+                    <div class="text-center text-gray-400 py-2">
+                        <i class="fas fa-spinner fa-spin mr-2"></i> Loading betting statistics...
+                    </div>
+                </div>
+                <div class="px-4 pb-4">
+                    <div class="px-3 py-2 bg-gray-800/50 rounded-lg text-xs text-gray-400">
+                        <i class="fas fa-info-circle mr-1 text-orange-500"></i>
+                        Tip: For best winning chances, bet on options with fewer bets!
+                    </div>
                 </div>
             </div>
         </div>
@@ -817,6 +840,72 @@
         let activeBetConfirmed = false;
         let currentBet = null;
         let betProcessed = false;  // Add this to track if bet has been processed
+        
+        // Track current betting statistics
+        let currentBetStatistics = {
+            colors: { RED: 0, GREEN: 0, VIOLET: 0 },
+            numbers: { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0 },
+            sizes: { BIG: 0, SMALL: 0 }
+        };
+        
+        // Function to update betting statistics display
+        function updateBetStatisticsDisplay() {
+            const statsContainer = document.getElementById('betStatistics');
+            if (!statsContainer) return;
+            
+            statsContainer.innerHTML = `
+                <div class="mb-2">
+                    <div class="text-sm text-gray-400 mb-1">Color Bets</div>
+                    <div class="flex justify-between gap-2">
+                        <div class="bg-red-500/20 rounded px-2 py-1 text-red-500 text-xs flex-1 text-center">
+                            RED: ${currentBetStatistics.colors.RED}
+                        </div>
+                        <div class="bg-green-500/20 rounded px-2 py-1 text-green-500 text-xs flex-1 text-center">
+                            GREEN: ${currentBetStatistics.colors.GREEN}
+                        </div>
+                        <div class="bg-violet-500/20 rounded px-2 py-1 text-violet-500 text-xs flex-1 text-center">
+                            VIOLET: ${currentBetStatistics.colors.VIOLET}
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <div class="text-sm text-gray-400 mb-1">Size Bets</div>
+                    <div class="flex justify-between gap-2">
+                        <div class="bg-orange-500/20 rounded px-2 py-1 text-orange-500 text-xs flex-1 text-center">
+                            BIG: ${currentBetStatistics.sizes.BIG}
+                        </div>
+                        <div class="bg-violet-500/20 rounded px-2 py-1 text-violet-500 text-xs flex-1 text-center">
+                            SMALL: ${currentBetStatistics.sizes.SMALL}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Function to fetch current bet statistics from server
+        async function fetchBetStatistics() {
+            try {
+                const response = await fetch(getApiUrl('/api/current-bets'));
+                if (response.ok) {
+                    const data = await response.json();
+                    // Update our local statistics
+                    currentBetStatistics.colors = data.bets || { RED: 0, GREEN: 0, VIOLET: 0 };
+                    currentBetStatistics.numbers = data.numbers || { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0 };
+                    currentBetStatistics.sizes = data.sizes || { BIG: 0, SMALL: 0 };
+                    
+                    console.log('Fetched bet statistics:', currentBetStatistics);
+                    updateBetStatisticsDisplay();
+                }
+            } catch (error) {
+                console.error('Error fetching bet statistics:', error);
+            }
+        }
+        
+        // Poll for bet statistics every 5 seconds
+        function startBetStatisticsPolling() {
+            fetchBetStatistics(); // Initial fetch
+            setInterval(fetchBetStatistics, 5000); // Then every 5 seconds
+        }
 
         // Add this function to reset all bet states
         function resetBetStates() {
@@ -829,6 +918,7 @@
             betProcessed = false;
         }
 
+        // Modified function to place bet and send data to server
         async function placeBet(type, value, amount) {
             console.log(`Placing bet: type=${type}, value=${value}, amount=${amount}`);
             
@@ -846,7 +936,47 @@
             }
 
             try {
-                // Deduct bet amount first
+                // Send bet data to our tracking API
+                const currentPeriod = await getCurrentPeriod();
+                const betData = {
+                    userId: user.uid,
+                    betType: type,
+                    betValue: value,
+                    amount: amount,
+                    period: currentPeriod
+                };
+                
+                console.log('Sending bet data to API:', betData);
+                
+                // Send bet data to our API
+                const response = await fetch(getApiUrl('/api/place-bet'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(betData)
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error('Error from bet API:', errorData);
+                    showNotification(`Error placing bet: ${errorData.error || 'Server error'}`, 'error');
+                    return false;
+                }
+                
+                // Get updated bet statistics
+                const responseData = await response.json();
+                console.log('Bet API response:', responseData);
+                
+                if (responseData.currentBets) {
+                    // Update our local statistics
+                    currentBetStatistics.colors = responseData.currentBets.bets || { RED: 0, GREEN: 0, VIOLET: 0 };
+                    currentBetStatistics.numbers = responseData.currentBets.numbers || { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0 };
+                    currentBetStatistics.sizes = responseData.currentBets.sizes || { BIG: 0, SMALL: 0 };
+                    updateBetStatisticsDisplay();
+                }
+                
+                // Deduct bet amount from wallet
                 console.log(`Deducting ${amount} from wallet balance`);
                 await updateWalletBalance(-amount);
                 betProcessed = false;  // Reset bet processed flag

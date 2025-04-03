@@ -175,6 +175,113 @@
       "timestamp": "2025-04-02T10:04:31.514Z",
       "period": "2504021534-1",
       "isMock": false
+    },
+    {
+      "number": 0,
+      "size": "SMALL",
+      "color": "VIOLET",
+      "timestamp": "2025-04-03T11:49:03.301Z",
+      "period": "2504031718-2",
+      "isMock": false
+    },
+    {
+      "number": 3,
+      "size": "SMALL",
+      "color": "GREEN",
+      "timestamp": "2025-04-03T11:52:03.217Z",
+      "period": "2504031721-2",
+      "isMock": false,
+      "betData": {
+        "period": "2504031722-1",
+        "bets": {
+          "RED": 0,
+          "GREEN": 0,
+          "VIOLET": 0
+        },
+        "numbers": {
+          "0": 0,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "sizes": {
+          "BIG": 0,
+          "SMALL": 0
+        },
+        "timestamp": "2025-04-03T11:52:00.006Z"
+      }
+    },
+    {
+      "number": 4,
+      "size": "SMALL",
+      "color": "RED",
+      "timestamp": "2025-04-03T11:52:33.265Z",
+      "period": "2504031722-1",
+      "isMock": false,
+      "betData": {
+        "period": "2504031722-2",
+        "bets": {
+          "RED": 0,
+          "GREEN": 0,
+          "VIOLET": 0
+        },
+        "numbers": {
+          "0": 0,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "sizes": {
+          "BIG": 0,
+          "SMALL": 0
+        },
+        "timestamp": "2025-04-03T11:52:30.013Z"
+      }
+    },
+    {
+      "number": 4,
+      "size": "SMALL",
+      "color": "RED",
+      "timestamp": "2025-04-03T11:53:03.284Z",
+      "period": "2504031722-2",
+      "isMock": false,
+      "betData": {
+        "period": "2504031723-1",
+        "bets": {
+          "RED": 0,
+          "GREEN": 0,
+          "VIOLET": 0
+        },
+        "numbers": {
+          "0": 0,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "sizes": {
+          "BIG": 0,
+          "SMALL": 0
+        },
+        "timestamp": "2025-04-03T11:53:00.012Z"
+      }
     }
   ]
 }
