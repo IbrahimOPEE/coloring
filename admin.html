@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <!-- Add Firebase SDKs - Including Auth -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gst    atic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <!-- Firebase Config -->
     <script>
@@ -35,8 +35,72 @@
         // Get Auth reference
         const auth = firebase.auth();
 
-        // Collection references - only keep users collection
-        const usersCollection = db.collection('users');
+        // Handle Firestore access without authentication
+        // Create mock collection references
+        const usersCollection = {
+            doc: (userId) => ({
+                get: async () => {
+                    try {
+                        // Try to get the document from Firestore
+                        const docRef = db.collection('users').doc(userId);
+                        const docSnapshot = await docRef.get();
+                        return docSnapshot;
+                    } catch (error) {
+                        console.error("Error fetching user document:", error);
+                        // Return a mock document if there's an authentication error
+                        return {
+                            exists: false,
+                            data: () => ({
+                                name: "Authentication Error",
+                                email: "Please check Firebase configuration",
+                                balance: 0
+                            }),
+                            id: userId
+                        };
+                    }
+                },
+                update: async (data) => {
+                    try {
+                        // Try to update the document in Firestore
+                        const docRef = db.collection('users').doc(userId);
+                        await docRef.update(data);
+                        return true;
+                    } catch (error) {
+                        console.error("Error updating user document:", error);
+                        // Show a notification about the error
+                        if (typeof showNotification === 'function') {
+                            showNotification("Error updating user: " + error.message, "warning");
+                        }
+                        throw error;
+                    }
+                }
+            }),
+            get: async () => {
+                try {
+                    // Try to get all documents from Firestore
+                    const snapshot = await db.collection('users').get();
+                    return snapshot;
+                } catch (error) {
+                    console.error("Error fetching users collection:", error);
+                    // Return a mock snapshot if there's an authentication error
+                    return {
+                        empty: false,
+                        forEach: (callback) => {
+                            // Create a mock user to display when there's an authentication error
+                            const mockDoc = {
+                                id: "authentication-error",
+                                data: () => ({
+                                    name: "Authentication Error",
+                                    email: "Please check Firebase configuration",
+                                    balance: 0
+                                })
+                            };
+                            callback(mockDoc);
+                        }
+                    };
+                }
+            }
+        };
     </script>
     <style>
         body {
@@ -296,11 +360,13 @@
         // Sign in anonymously to firebase
         async function signInAnonymously() {
             try {
-                await auth.signInAnonymously();
-                console.log("Signed in anonymously");
+                // Instead of using anonymous auth, we'll just log a message
+                console.log("Using password-based authentication only");
+                return true;
             } catch (error) {
-                console.error("Error signing in anonymously:", error);
+                console.error("Authentication error:", error);
                 showNotification("Authentication error: " + error.message, "warning");
+                return false;
             }
         }
 
@@ -320,10 +386,8 @@
                     return;
                 }
                 
-                // Ensure user is authenticated with Firebase
-                if (!auth.currentUser) {
-                    await signInAnonymously();
-                }
+                // Remove Firebase authentication requirement
+                // We no longer need to check for auth.currentUser
                 
                 showNotification('Loading users...', 'info');
                 
@@ -453,10 +517,8 @@
             }
 
             try {
-                // Ensure user is authenticated with Firebase
-                if (!auth.currentUser) {
-                    await signInAnonymously();
-                }
+                // Remove Firebase authentication requirement
+                // We no longer need to check for auth.currentUser
                 
                 // Update user balance in Firestore with correct field name
                 await usersCollection.doc(currentEditUser.id).update({
@@ -498,10 +560,8 @@
                 try {
                     showNotification('Logging in...', 'info');
                     
-                    // Ensure user is authenticated with Firebase
-                    if (!auth.currentUser) {
-                        await signInAnonymously();
-                    }
+                    // Remove Firebase authentication requirement
+                    // We no longer need to check for auth.currentUser
                     
                     // Save admin status in localStorage
                     localStorage.setItem('isAdmin', 'true');
@@ -516,7 +576,7 @@
                     showNotification('Welcome, Admin!');
                     
                     // Load users after successful login
-                        loadUsers();
+                    loadUsers();
                 } catch (error) {
                     console.error('Admin login error:', error);
                     showNotification('Error signing in: ' + error.message, 'warning');
@@ -543,10 +603,8 @@
             }
             
             try {
-                // Ensure user is authenticated with Firebase
-                if (!auth.currentUser) {
-                    await signInAnonymously();
-                }
+                // Remove Firebase authentication requirement
+                // We no longer need to check for auth.currentUser
                 
                 const userDoc = await usersCollection.doc(userId).get();
                 
@@ -594,8 +652,8 @@
             const isAdmin = localStorage.getItem('isAdmin') === 'true';
             const now = new Date();
             
-            // Sign in anonymously when page loads
-            await signInAnonymously();
+            // Remove anonymous sign-in on page load
+            // No need for await signInAnonymously()
             
             if (isAdmin && adminExpiry && new Date(adminExpiry) > now) {
                 document.getElementById('adminLogin').style.display = 'none';

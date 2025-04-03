@@ -123,14 +123,59 @@ async function getPreviousResults(count = 2) {
 
 // Function to generate a mock result when Firestore is unavailable
 async function generateMockResult(period) {
-  // Instead of using the seeded random logic, use the strategic result
+  // Generate a truly random result
+  const generateRandomResult = () => {
+    // Generate random number (0-9)
+    const randomNumber = Math.floor(Math.random() * 10);
+    
+    // Determine size based on random number
+    const size = randomNumber >= 5 ? 'BIG' : 'SMALL';
+    
+    // Determine color based on random number
+    let color;
+    if (randomNumber === 0) {
+      color = 'VIOLET';
+    } else if (randomNumber === 5) {
+      // For number 5, randomly choose between VIOLET and VIOLET GREEN
+      color = Math.random() < 0.5 ? 'VIOLET' : 'VIOLET GREEN';
+    } else if (randomNumber % 2 === 0) { // Even numbers (2,4,6,8)
+      color = 'RED';
+    } else { // Odd numbers (1,3,7,9)
+      color = 'GREEN';
+    }
+    
+    return {
+      number: randomNumber,
+      size: size,
+      color: color,
+      timestamp: new Date().toISOString(),
+      period,
+      isMock: false
+    };
+  };
+
+  // Check if there are enough bets for strategic result
+  const totalColorBets = Object.values(currentPeriodBets.bets).reduce((sum, count) => sum + count, 0);
+  const totalNumberBets = Object.values(currentPeriodBets.numbers).reduce((sum, count) => sum + count, 0);
+  const totalSizeBets = Object.values(currentPeriodBets.sizes).reduce((sum, count) => sum + count, 0);
+  
+  const totalBetsPlaced = totalColorBets + totalNumberBets + totalSizeBets;
+  
+  // Use random result if less than two bets are placed
+  if (totalBetsPlaced < 2) {
+    const randomResult = generateRandomResult();
+    console.log(`Less than 2 bets placed, generated random result for period ${period}:`, randomResult);
+    return randomResult;
+  }
+  
+  // Otherwise use the strategic result
   const result = determineStrategicResult();
   result.period = period;
   console.log(`Generated strategic result for period ${period}:`, result);
   return result;
 }
 
-// Result generation function with deterministic output
+// Modified generateAndSaveResult function to handle random results
 async function generateAndSaveResult(period) {
   try {
     // Check if a result already exists for this period
@@ -150,9 +195,50 @@ async function generateAndSaveResult(period) {
       // Continue execution - we'll generate a strategic result even if we can't save it
     }
     
-    // Generate a strategic result based on bet distribution instead of random
-    const result = determineStrategicResult();
-    result.period = period;
+    // Check if there are enough bets for strategic result
+    const totalColorBets = Object.values(currentPeriodBets.bets).reduce((sum, count) => sum + count, 0);
+    const totalNumberBets = Object.values(currentPeriodBets.numbers).reduce((sum, count) => sum + count, 0);
+    const totalSizeBets = Object.values(currentPeriodBets.sizes).reduce((sum, count) => sum + count, 0);
+    
+    const totalBetsPlaced = totalColorBets + totalNumberBets + totalSizeBets;
+    
+    // Generate result based on bet distribution or randomly if fewer than 2 bets
+    let result;
+    if (totalBetsPlaced < 2) {
+      console.log(`Less than 2 bets placed for period ${period}, generating random result`);
+      
+      // Generate random number (0-9)
+      const randomNumber = Math.floor(Math.random() * 10);
+      
+      // Determine size based on random number
+      const size = randomNumber >= 5 ? 'BIG' : 'SMALL';
+      
+      // Determine color based on random number
+      let color;
+      if (randomNumber === 0) {
+        color = 'VIOLET';
+      } else if (randomNumber === 5) {
+        // For number 5, randomly choose between VIOLET and VIOLET GREEN
+        color = Math.random() < 0.5 ? 'VIOLET' : 'VIOLET GREEN';
+      } else if (randomNumber % 2 === 0) { // Even numbers (2,4,6,8)
+        color = 'RED';
+      } else { // Odd numbers (1,3,7,9)
+        color = 'GREEN';
+      }
+      
+      result = {
+        number: randomNumber,
+        size: size,
+        color: color,
+        timestamp: new Date().toISOString(),
+        period: period,
+        isMock: false
+      };
+    } else {
+      // Generate a strategic result based on bet distribution
+      result = determineStrategicResult();
+      result.period = period;
+    }
     
     // Save the result to Firestore if authentication is working
     try {
@@ -165,7 +251,7 @@ async function generateAndSaveResult(period) {
     } catch (saveError) {
       console.error('Error saving result to Firestore:', saveError);
       console.log(`Generated result for completed period ${period} after auth error:`, result);
-      // Continue - we still want to return the strategic result
+      // Continue - we still want to return the result
     }
     
     // Save to local file as backup
@@ -217,10 +303,33 @@ async function generateAndSaveResult(period) {
     return result;
   } catch (error) {
     console.error(`Error in generateAndSaveResult for period ${period}:`, error);
-    // In case of any error, still return a strategic result
-    const fallbackResult = determineStrategicResult();
-    fallbackResult.period = period;
-    console.log(`Using fallback strategic result for period ${period} after error:`, fallbackResult);
+    // In case of any error, still return a result
+    
+    // Generate a random result as fallback
+    const randomNumber = Math.floor(Math.random() * 10);
+    const size = randomNumber >= 5 ? 'BIG' : 'SMALL';
+    let color;
+    
+    if (randomNumber === 0) {
+      color = 'VIOLET';
+    } else if (randomNumber === 5) {
+      color = Math.random() < 0.5 ? 'VIOLET' : 'VIOLET GREEN';
+    } else if (randomNumber % 2 === 0) {
+      color = 'RED';
+    } else {
+      color = 'GREEN';
+    }
+    
+    const fallbackResult = {
+      number: randomNumber,
+      size: size,
+      color: color,
+      timestamp: new Date().toISOString(),
+      period: period,
+      isMock: false
+    };
+    
+    console.log(`Using fallback random result for period ${period} after error:`, fallbackResult);
     return fallbackResult;
   }
 }
@@ -561,22 +670,54 @@ app.post('/api/place-bet', (req, res) => {
 function determineStrategicResult() {
   console.log('Determining strategic result based on bet distribution:', currentPeriodBets);
   
-  // Default result in case of equal distribution or no bets
+  // Check total number of bets placed
+  const totalColorBets = Object.values(currentPeriodBets.bets).reduce((sum, count) => sum + count, 0);
+  const totalNumberBets = Object.values(currentPeriodBets.numbers).reduce((sum, count) => sum + count, 0);
+  const totalSizeBets = Object.values(currentPeriodBets.sizes).reduce((sum, count) => sum + count, 0);
+  
+  const totalBetsPlaced = totalColorBets + totalNumberBets + totalSizeBets;
+  
+  // If less than two bets placed, generate truly random result
+  if (totalBetsPlaced < 2) {
+    console.log(`Only ${totalBetsPlaced} bets placed, generating random result`);
+    
+    // Generate random number (0-9)
+    const randomNumber = Math.floor(Math.random() * 10);
+    
+    // Determine size based on random number
+    const size = randomNumber >= 5 ? 'BIG' : 'SMALL';
+    
+    // Determine color based on random number
+    let color;
+    if (randomNumber === 0) {
+      color = 'VIOLET';
+    } else if (randomNumber === 5) {
+      // For number 5, randomly choose between VIOLET and VIOLET GREEN
+      color = Math.random() < 0.5 ? 'VIOLET' : 'VIOLET GREEN';
+    } else if (randomNumber % 2 === 0) { // Even numbers (2,4,6,8)
+      color = 'RED';
+    } else { // Odd numbers (1,3,7,9)
+      color = 'GREEN';
+    }
+    
+    const randomResult = {
+      number: randomNumber,
+      size: size,
+      color: color,
+      timestamp: new Date().toISOString(),
+      isMock: false
+    };
+    
+    console.log('Generated random result:', randomResult);
+    return randomResult;
+  }
+  
+  // Default result in case of equal distribution or fallback
   const defaultResult = {
     number: 0,
     size: 'SMALL',
     color: 'VIOLET'
   };
-  
-  // If no bets, return default random result
-  const totalColorBets = Object.values(currentPeriodBets.bets).reduce((sum, count) => sum + count, 0);
-  const totalNumberBets = Object.values(currentPeriodBets.numbers).reduce((sum, count) => sum + count, 0);
-  const totalSizeBets = Object.values(currentPeriodBets.sizes).reduce((sum, count) => sum + count, 0);
-  
-  if (totalColorBets === 0 && totalNumberBets === 0 && totalSizeBets === 0) {
-    console.log('No bets placed, returning default result');
-    return defaultResult;
-  }
   
   // Find which color has the least bets (excluding zeros)
   const colorBets = Object.entries(currentPeriodBets.bets)
