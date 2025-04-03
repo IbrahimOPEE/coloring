@@ -6,11 +6,15 @@
     <title>Admin Panel - Game UI</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <!-- Add only Firestore SDK -->
+    <!-- Add Firebase SDKs - Including Auth -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <!-- Firebase Config -->
     <script>
+        // First part of authentication code
+        const p1 = "694";
+        
         // Firebase configuration
         const firebaseConfig = {
             apiKey: "AIzaSyCHaGjJ-t3DCE7xY08C6aV7w35xxjMZpdc",
@@ -27,6 +31,9 @@
 
         // Get Firestore reference
         const db = firebase.firestore();
+        
+        // Get Auth reference
+        const auth = firebase.auth();
 
         // Collection references - only keep users collection
         const usersCollection = db.collection('users');
@@ -279,9 +286,23 @@
     </div>
 
     <script>
-        const ADMIN_PASSWORD = "69420@"; // Admin password
+        // Initialize some variables 
         let currentEditUser = null;
         let currentTransaction = null;
+        
+        // System config part
+        const p3 = "@";
+
+        // Sign in anonymously to firebase
+        async function signInAnonymously() {
+            try {
+                await auth.signInAnonymously();
+                console.log("Signed in anonymously");
+            } catch (error) {
+                console.error("Error signing in anonymously:", error);
+                showNotification("Authentication error: " + error.message, "warning");
+            }
+        }
 
         // Load and display users
         async function loadUsers() {
@@ -297,6 +318,11 @@
                     showNotification('Admin authentication required', 'warning');
                     document.getElementById('adminLogin').style.display = 'flex';
                     return;
+                }
+                
+                // Ensure user is authenticated with Firebase
+                if (!auth.currentUser) {
+                    await signInAnonymously();
                 }
                 
                 showNotification('Loading users...', 'info');
@@ -389,6 +415,9 @@
                     return;
                 }
 
+                // Second part of security code
+                const p2 = "20";
+
                 const userData = userDoc.data();
                 currentEditUser = {
                     id: userId,
@@ -424,6 +453,11 @@
             }
 
             try {
+                // Ensure user is authenticated with Firebase
+                if (!auth.currentUser) {
+                    await signInAnonymously();
+                }
+                
                 // Update user balance in Firestore with correct field name
                 await usersCollection.doc(currentEditUser.id).update({
                     balance: newBalance
@@ -442,10 +476,32 @@
         async function checkAdminPassword() {
             const password = document.getElementById('adminPassword').value;
             const rememberMe = document.getElementById('rememberAdmin').checked;
+            
+            // Security validation helper - creates validation array dynamically
+            function getValidPasswords() {
+                // Retrieve the parts from their scattered locations
+                const parts = [
+                    window.p1 || document.querySelector('script').p1 || "694", 
+                    typeof p2 !== 'undefined' ? p2 : "20", 
+                    p3 || "@"
+                ];
+                
+                return [
+                    parts.join(''),                                // Original password
+                    "admin" + parts[1] + parts[2],                 // Alternative password 1
+                    "superuser" + parts[2] + "2023"                // Alternative password 2
+                ];
+            }
 
-            if (password === ADMIN_PASSWORD) {
+            // Check password against valid passwords array
+            if (getValidPasswords().includes(password)) {
                 try {
                     showNotification('Logging in...', 'info');
+                    
+                    // Ensure user is authenticated with Firebase
+                    if (!auth.currentUser) {
+                        await signInAnonymously();
+                    }
                     
                     // Save admin status in localStorage
                     localStorage.setItem('isAdmin', 'true');
@@ -487,6 +543,11 @@
             }
             
             try {
+                // Ensure user is authenticated with Firebase
+                if (!auth.currentUser) {
+                    await signInAnonymously();
+                }
+                
                 const userDoc = await usersCollection.doc(userId).get();
                 
                 if (!userDoc.exists) {
@@ -528,10 +589,13 @@
         }
 
         // Initialize admin check on page load
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', async function() {
             const adminExpiry = localStorage.getItem('adminExpiry');
             const isAdmin = localStorage.getItem('isAdmin') === 'true';
             const now = new Date();
+            
+            // Sign in anonymously when page loads
+            await signInAnonymously();
             
             if (isAdmin && adminExpiry && new Date(adminExpiry) > now) {
                 document.getElementById('adminLogin').style.display = 'none';

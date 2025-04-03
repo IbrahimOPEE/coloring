@@ -54,7 +54,9 @@ service cloud.firestore {
     // Users collection
     match /users/{userId} {
       allow read: if true;  // Public user profiles
-      allow write: if isAuthenticated() && isOwner(userId);  // Users can only update their own data
+      allow create: if isAuthenticated();  // Allow users to create their own profile
+      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());  // Allow users to update their own data or admin to update any user
+      allow delete: if isAuthenticated() && isAdmin();  // Only admin can delete users
     }
     
     // Transaction rules
