@@ -849,6 +849,48 @@
                 // Deduct bet amount first
                 console.log(`Deducting ${amount} from wallet balance`);
                 await updateWalletBalance(-amount);
+                
+                // Send bet data to the server for the strategic result generation
+                try {
+                    const betData = {
+                        betType: type,
+                        betValue: value,
+                        amount: amount,
+                        userId: user.uid
+                    };
+                    
+                    // Get the current host and protocol
+                    const protocol = window.location.protocol;
+                    const hostname = window.location.hostname;
+                    const port = window.location.port;
+                    
+                    // Construct the API URL
+                    const baseUrl = `${protocol}//${hostname}${port ? ':' + port : ''}`;
+                    const apiUrl = `${baseUrl}/api/place-bet`;
+                    
+                    console.log('Sending bet data to server:', betData);
+                    console.log('API URL:', apiUrl);
+                    
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(betData)
+                    });
+                    
+                    if (!response.ok) {
+                        console.warn('Server returned error when saving bet data:', response.status, response.statusText);
+                        // Continue even if server doesn't save the bet data
+                    } else {
+                        const result = await response.json();
+                        console.log('Server confirmed bet data received:', result);
+                    }
+                } catch (serverError) {
+                    console.warn('Error sending bet data to server:', serverError);
+                    // Continue even if we can't reach the server
+                }
+                
                 betProcessed = false;  // Reset bet processed flag
                 console.log('Bet placed successfully');
                 return true;

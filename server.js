@@ -16,6 +16,25 @@ const LOCAL_HISTORY_FILE = path.join(__dirname, 'local_game_history.json');
 let isSchedulerRunning = false;
 let serverPort = 3456; // Fixed unique port number
 
+// Global variables to store bet data for the current period
+let currentPeriodBets = {
+  period: '',
+  bets: {
+    RED: 0,
+    GREEN: 0,
+    VIOLET: 0
+  },
+  numbers: {
+    '0': 0, '1': 0, '2': 0, '3': 0, '4': 0, 
+    '5': 0, '6': 0, '7': 0, '8': 0, '9': 0
+  },
+  sizes: {
+    BIG: 0,
+    SMALL: 0
+  },
+  timestamp: null
+};
+
 const app = express();
 
 // Configure CORS to allow requests from your domain
@@ -104,71 +123,10 @@ async function getPreviousResults(count = 2) {
 
 // Function to generate a mock result when Firestore is unavailable
 async function generateMockResult(period) {
-  // Convert period string to a better numeric seed
-  const [datePart, periodPart] = period.split('-');
-  // Extract components from datePart (YYMMDDHHMI format)
-  const year = parseInt(datePart.substring(0, 2));
-  const month = parseInt(datePart.substring(2, 4));
-  const day = parseInt(datePart.substring(4, 6));
-  const hour = parseInt(datePart.substring(6, 8));
-  const minute = parseInt(datePart.substring(8, 10));
-  
-  // Create a more unique seed by combining all components
-  const periodSeed = (year * 31 + day) * 24 * 60 + (hour * 60 + minute) + (periodPart === '1' ? 0 : 30);
-  console.log('Using period seed for random generation:', periodSeed);
-  
-  // Improved seeded random function with better distribution
-  const seededRandom = (salt = 1) => {
-    let x = periodSeed + salt;
-    x = ((x << 13) ^ x) * 0x45d9f3b;
-    x = ((x << 17) ^ x) * 0x45d9f3b;
-    x = (x ^ (x >> 15)) >>> 0;
-    return (x % 1000000) / 1000000;
-  };
-  
-  // Generate number first (0-9)
-  const numberRandom = seededRandom(1);
-  let number;
-  
-  // More balanced number distribution
-  if (numberRandom < 0.1) {
-    number = 0; // 10% chance for 0
-  } else if (numberRandom < 0.2) {
-    number = 5; // 10% chance for 5
-  } else {
-    // Distribute remaining numbers (1-4, 6-9) evenly
-    const remainingNumbers = [1, 2, 3, 4, 6, 7, 8, 9];
-    const index = Math.floor(seededRandom(2) * remainingNumbers.length);
-    number = remainingNumbers[index];
-  }
-  
-  // Determine color based on number and additional randomness
-  let color;
-  const colorRandom = seededRandom(3);
-  
-  if (number === 0) {
-    color = 'VIOLET';
-  } else if (number === 5) {
-    color = colorRandom < 0.5 ? 'VIOLET' : 'VIOLET GREEN';
-  } else if (number % 2 === 0) {
-    color = 'RED';
-  } else {
-    color = 'GREEN';
-  }
-  
-  // Determine size
-  const size = number >= 5 ? 'BIG' : 'SMALL';
-  
-  const result = { 
-    number, 
-    size, 
-    color,
-    timestamp: new Date().toISOString(),
-    period,
-    isMock: false
-  };
-  
-  console.log(`Generated deterministic result for period ${period}:`, result);
+  // Instead of using the seeded random logic, use the strategic result
+  const result = determineStrategicResult();
+  result.period = period;
+  console.log(`Generated strategic result for period ${period}:`, result);
   return result;
 }
 
@@ -189,11 +147,12 @@ async function generateAndSaveResult(period) {
       }
     } catch (authError) {
       console.error('Authentication error when checking for existing result:', authError);
-      // Continue execution - we'll generate a deterministic result even if we can't save it
+      // Continue execution - we'll generate a strategic result even if we can't save it
     }
     
-    // Generate a deterministic result based on the period
-    const result = await generateMockResult(period);
+    // Generate a strategic result based on bet distribution instead of random
+    const result = determineStrategicResult();
+    result.period = period;
     
     // Save the result to Firestore if authentication is working
     try {
@@ -206,13 +165,16 @@ async function generateAndSaveResult(period) {
     } catch (saveError) {
       console.error('Error saving result to Firestore:', saveError);
       console.log(`Generated result for completed period ${period} after auth error:`, result);
-      // Continue - we still want to return the deterministic result
+      // Continue - we still want to return the strategic result
     }
     
     // Save to local file as backup
     try {
       const historyData = await getLocalGameHistory();
       historyData.results = historyData.results || [];
+      
+      // Add bet data to the result
+      result.betData = { ...currentPeriodBets };
       
       // Check if this period already exists in local history
       const existingIndex = historyData.results.findIndex(item => item.period === period);
@@ -233,12 +195,32 @@ async function generateAndSaveResult(period) {
       console.error('Error saving to local backup:', localSaveError);
     }
     
+    // Reset bet data for the next period
+    currentPeriodBets = {
+      period: getPeriod(),
+      bets: {
+        RED: 0,
+        GREEN: 0,
+        VIOLET: 0
+      },
+      numbers: {
+        '0': 0, '1': 0, '2': 0, '3': 0, '4': 0, 
+        '5': 0, '6': 0, '7': 0, '8': 0, '9': 0
+      },
+      sizes: {
+        BIG: 0,
+        SMALL: 0
+      },
+      timestamp: new Date().toISOString()
+    };
+    
     return result;
   } catch (error) {
     console.error(`Error in generateAndSaveResult for period ${period}:`, error);
-    // In case of any error, still return a deterministic result
-    const fallbackResult = await generateMockResult(period);
-    console.log(`Using fallback deterministic result for period ${period} after error:`, fallbackResult);
+    // In case of any error, still return a strategic result
+    const fallbackResult = determineStrategicResult();
+    fallbackResult.period = period;
+    console.log(`Using fallback strategic result for period ${period} after error:`, fallbackResult);
     return fallbackResult;
   }
 }
@@ -499,15 +481,247 @@ app.post('/api/test-local-save', (req, res) => {
   }
 });
 
-// Result generation scheduler
+// Add API endpoint to receive bet data from clients
+app.post('/api/place-bet', (req, res) => {
+  try {
+    const { betType, betValue, amount, userId } = req.body;
+    
+    if (!betType || !betValue || !amount) {
+      return res.status(400).json({ error: 'Missing required bet information' });
+    }
+    
+    console.log(`Received bet: type=${betType}, value=${betValue}, amount=${amount}, userId=${userId || 'anonymous'}`);
+    
+    // Update the current period bet counts
+    const currentPeriod = getPeriod();
+    if (currentPeriodBets.period !== currentPeriod) {
+      // Reset bet data for new period
+      currentPeriodBets = {
+        period: currentPeriod,
+        bets: {
+          RED: 0,
+          GREEN: 0,
+          VIOLET: 0
+        },
+        numbers: {
+          '0': 0, '1': 0, '2': 0, '3': 0, '4': 0, 
+          '5': 0, '6': 0, '7': 0, '8': 0, '9': 0
+        },
+        sizes: {
+          BIG: 0,
+          SMALL: 0
+        },
+        timestamp: new Date().toISOString()
+      };
+    }
+    
+    // Record the bet based on type
+    if (betType === 'color') {
+      // Color bets - normalize to uppercase
+      const normalizedValue = betValue.toUpperCase();
+      if (currentPeriodBets.bets[normalizedValue] !== undefined) {
+        currentPeriodBets.bets[normalizedValue] += parseInt(amount);
+      } else {
+        console.warn(`Unrecognized color bet value: ${normalizedValue}`);
+      }
+    } else if (betType === 'number') {
+      // Number bets
+      const numValue = betValue.toString();
+      if (currentPeriodBets.numbers[numValue] !== undefined) {
+        currentPeriodBets.numbers[numValue] += parseInt(amount);
+      } else {
+        console.warn(`Unrecognized number bet value: ${numValue}`);
+      }
+    } else if (betType === 'size') {
+      // Size bets - normalize to uppercase
+      const normalizedValue = betValue.toUpperCase();
+      if (currentPeriodBets.sizes[normalizedValue] !== undefined) {
+        currentPeriodBets.sizes[normalizedValue] += parseInt(amount);
+      } else {
+        console.warn(`Unrecognized size bet value: ${normalizedValue}`);
+      }
+    } else {
+      console.warn(`Unrecognized bet type: ${betType}`);
+    }
+    
+    console.log('Current period bet data:', currentPeriodBets);
+    
+    return res.json({ 
+      success: true, 
+      message: 'Bet recorded successfully',
+      currentPeriod
+    });
+  } catch (error) {
+    console.error('Error processing bet:', error);
+    return res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+});
+
+// Function to determine the optimal result based on bet distribution
+function determineStrategicResult() {
+  console.log('Determining strategic result based on bet distribution:', currentPeriodBets);
+  
+  // Default result in case of equal distribution or no bets
+  const defaultResult = {
+    number: 0,
+    size: 'SMALL',
+    color: 'VIOLET'
+  };
+  
+  // If no bets, return default random result
+  const totalColorBets = Object.values(currentPeriodBets.bets).reduce((sum, count) => sum + count, 0);
+  const totalNumberBets = Object.values(currentPeriodBets.numbers).reduce((sum, count) => sum + count, 0);
+  const totalSizeBets = Object.values(currentPeriodBets.sizes).reduce((sum, count) => sum + count, 0);
+  
+  if (totalColorBets === 0 && totalNumberBets === 0 && totalSizeBets === 0) {
+    console.log('No bets placed, returning default result');
+    return defaultResult;
+  }
+  
+  // Find which color has the least bets (excluding zeros)
+  const colorBets = Object.entries(currentPeriodBets.bets)
+    .filter(([color, count]) => count > 0)
+    .sort((a, b) => a[1] - b[1]);
+  
+  // Find which number has the least bets (excluding zeros)
+  const numberBets = Object.entries(currentPeriodBets.numbers)
+    .filter(([number, count]) => count > 0)
+    .sort((a, b) => a[1] - b[1]);
+  
+  // Find which size has the least bets (excluding zeros)
+  const sizeBets = Object.entries(currentPeriodBets.sizes)
+    .filter(([size, count]) => count > 0)
+    .sort((a, b) => a[1] - b[1]);
+  
+  // Start building the strategic result
+  let strategicResult = { ...defaultResult };
+  
+  // First, determine the winning color (least bet color)
+  if (colorBets.length > 0) {
+    const winningColor = colorBets[0][0];
+    strategicResult.color = winningColor;
+    console.log(`Winning color will be ${winningColor} (least bet color)`);
+    
+    // Now determine a number that matches this color
+    if (winningColor === 'RED') {
+      // Red numbers: 2, 4, 6, 8
+      const redNumbers = ['2', '4', '6', '8'];
+      const leastBetRedNumber = redNumbers
+        .map(num => [num, currentPeriodBets.numbers[num] || 0])
+        .sort((a, b) => a[1] - b[1])[0][0];
+      strategicResult.number = parseInt(leastBetRedNumber);
+      strategicResult.size = strategicResult.number >= 5 ? 'BIG' : 'SMALL';
+    } else if (winningColor === 'GREEN') {
+      // Green numbers: 1, 3, 7, 9
+      const greenNumbers = ['1', '3', '7', '9'];
+      const leastBetGreenNumber = greenNumbers
+        .map(num => [num, currentPeriodBets.numbers[num] || 0])
+        .sort((a, b) => a[1] - b[1])[0][0];
+      strategicResult.number = parseInt(leastBetGreenNumber);
+      strategicResult.size = strategicResult.number >= 5 ? 'BIG' : 'SMALL';
+    } else if (winningColor === 'VIOLET') {
+      // Violet numbers: 0, 5
+      if ((currentPeriodBets.numbers['0'] || 0) <= (currentPeriodBets.numbers['5'] || 0)) {
+        strategicResult.number = 0;
+        strategicResult.size = 'SMALL';
+      } else {
+        strategicResult.number = 5;
+        strategicResult.size = 'BIG';
+        // 5 is both green and violet
+        strategicResult.color = 'VIOLET GREEN';
+      }
+    }
+  } else if (numberBets.length > 0) {
+    // If no color bets but there are number bets
+    const winningNumber = parseInt(numberBets[0][0]);
+    strategicResult.number = winningNumber;
+    
+    // Set color and size based on the number
+    if (winningNumber === 0) {
+      strategicResult.color = 'VIOLET';
+      strategicResult.size = 'SMALL';
+    } else if (winningNumber === 5) {
+      strategicResult.color = 'VIOLET GREEN';
+      strategicResult.size = 'BIG';
+    } else if (winningNumber % 2 === 0) { // Even numbers (2,4,6,8)
+      strategicResult.color = 'RED';
+      strategicResult.size = winningNumber >= 5 ? 'BIG' : 'SMALL';
+    } else { // Odd numbers (1,3,7,9)
+      strategicResult.color = 'GREEN';
+      strategicResult.size = winningNumber >= 5 ? 'BIG' : 'SMALL';
+    }
+  } else if (sizeBets.length > 0) {
+    // If only size bets
+    const winningSize = sizeBets[0][0];
+    strategicResult.size = winningSize;
+    
+    // Pick a number that matches this size
+    if (winningSize === 'BIG') {
+      // Big numbers: 5-9
+      const bigNumbers = ['5', '6', '7', '8', '9'];
+      const leastBetBigNumber = bigNumbers
+        .map(num => [num, currentPeriodBets.numbers[num] || 0])
+        .sort((a, b) => a[1] - b[1])[0][0];
+      strategicResult.number = parseInt(leastBetBigNumber);
+      
+      // Determine color based on number
+      if (strategicResult.number === 5) {
+        strategicResult.color = 'VIOLET GREEN';
+      } else if (strategicResult.number % 2 === 0) {
+        strategicResult.color = 'RED';
+      } else {
+        strategicResult.color = 'GREEN';
+      }
+    } else {
+      // Small numbers: 0-4
+      const smallNumbers = ['0', '1', '2', '3', '4'];
+      const leastBetSmallNumber = smallNumbers
+        .map(num => [num, currentPeriodBets.numbers[num] || 0])
+        .sort((a, b) => a[1] - b[1])[0][0];
+      strategicResult.number = parseInt(leastBetSmallNumber);
+      
+      // Determine color based on number
+      if (strategicResult.number === 0) {
+        strategicResult.color = 'VIOLET';
+      } else if (strategicResult.number % 2 === 0) {
+        strategicResult.color = 'RED';
+      } else {
+        strategicResult.color = 'GREEN';
+      }
+    }
+  }
+  
+  console.log('Determined strategic result:', strategicResult);
+  
+  // Return the strategic result
+  return {
+    ...strategicResult,
+    timestamp: new Date().toISOString(),
+    isMock: false
+  };
+}
+
+// Modify the result generation scheduler to collect bets and make strategic decision
 async function scheduleResultGeneration() {
   const now = new Date();
   const seconds = now.getSeconds();
   
   // Calculate when the next period ends (either at :00 or :30 seconds)
   const nextPeriodEnd = seconds < 30 ? 30 : 60;
-  const delay = (nextPeriodEnd - seconds) * 1000 - now.getMilliseconds();
+  const timeToNextPeriodEnd = (nextPeriodEnd - seconds) * 1000 - now.getMilliseconds();
   
+  // For strategic decision making, we need to set a timer to collect bets 5 seconds before period ends
+  const timeToStrategicDecision = timeToNextPeriodEnd - 5000;
+  
+  if (timeToStrategicDecision > 0) {
+    // Set a timer to finalize bet collection 5 seconds before period ends
+    setTimeout(() => {
+      // Log the final bet distribution for the current period
+      console.log('Final bet distribution before period end:', currentPeriodBets);
+    }, timeToStrategicDecision);
+  }
+  
+  // Original timer to generate result when period ends
   setTimeout(async () => {
     try {
       // Get the period that just ended
@@ -517,12 +731,12 @@ async function scheduleResultGeneration() {
       let existingResultDoc;
       try {
         const docRef = db.collection('gameResults').doc(completedPeriod);
-        existingResultDoc = await docRef.get(); // Use admin SDK directly
+        existingResultDoc = await docRef.get();
         
         if (!existingResultDoc.exists) {
           // Only generate a result if one doesn't already exist
           const result = await generateAndSaveResult(completedPeriod);
-          console.log(`Generated result for completed period ${completedPeriod}:`, result);
+          console.log(`Generated strategic result for completed period ${completedPeriod}:`, result);
         } else {
           console.log(`Result for period ${completedPeriod} already exists, skipping generation`);
         }
@@ -531,7 +745,7 @@ async function scheduleResultGeneration() {
         // Try to generate a result anyway, our generateAndSaveResult function has fallbacks
         try {
           const result = await generateAndSaveResult(completedPeriod);
-          console.log(`Generated result for completed period ${completedPeriod} after auth error:`, result);
+          console.log(`Generated strategic result for completed period ${completedPeriod} after auth error:`, result);
         } catch (genError) {
           console.error('Failed to generate result after auth error:', genError);
         }
@@ -541,7 +755,7 @@ async function scheduleResultGeneration() {
     } finally {
       scheduleResultGeneration(); // Schedule next result
     }
-  }, delay);
+  }, timeToNextPeriodEnd);
 }
 
 // Start the result generation scheduler
