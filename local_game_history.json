@@ -348,6 +348,48 @@
         },
         "timestamp": "2025-04-03T11:54:00.012Z"
       }
+    },
+    {
+      "number": 4,
+      "size": "SMALL",
+      "color": "RED",
+      "timestamp": "2025-04-03T12:12:33.224Z",
+      "period": "2504031742-1",
+      "isMock": false,
+      "betData": {
+        "period": "2504031742-2",
+        "bets": {
+          "RED": 0,
+          "GREEN": 0,
+          "VIOLET": 0,
+          "red": 1
+        },
+        "numbers": {
+          "0": 0,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0,
+          "9": 0
+        },
+        "sizes": {
+          "BIG": 0,
+          "SMALL": 0
+        },
+        "timestamp": "2025-04-03T12:12:30.003Z"
+      }
+    },
+    {
+      "number": 9,
+      "size": "BIG",
+      "color": "GREEN",
+      "timestamp": "2025-04-03T12:19:31.520Z",
+      "period": "2504031749-1",
+      "isMock": false
     }
   ]
 }

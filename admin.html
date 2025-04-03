@@ -6,129 +6,37 @@
     <title>Admin Panel - Game UI</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <!-- Remove Firebase SDKs -->
+    <!-- Add Firebase SDKs - Including Auth -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gst    atic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <!-- Firebase Config -->
     <script>
-        // Authentication configuration with hardcoded credentials - for admin panel only
-        const adminCredentials = {
-            // First part of authentication code
-            p1: "694",
-            p2: "20",
-            p3: "@",
-            validPasswords: function() {
-                const parts = [this.p1, this.p2, this.p3];
-                return [
-                    parts.join(''),                 // 69420@
-                    "admin" + this.p2 + this.p3,    // admin20@
-                    "superuser" + this.p3 + "2023"  // superuser@2023
-                ];
-            }
+        // First part of authentication code
+        const p1 = "694";
+        
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCHaGjJ-t3DCE7xY08C6aV7w35xxjMZpdc",
+            authDomain: "coloring-705b5.firebaseapp.com",
+            projectId: "coloring-705b5",
+            storageBucket: "coloring-705b5.firebasestorage.app",
+            messagingSenderId: "686022960865",
+            appId: "1:686022960865:web:a9a5203d8b7d98f98ab9a0",
+            measurementId: "G-3MZYE1BP0K"
         };
 
-        // In-memory database for admin session
-        let adminDb = {
-            users: [],
-            totalBalance: 0,
-            activeUsers: 0,
-            isAuthenticated: false
-        };
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+
+        // Get Firestore reference
+        const db = firebase.firestore();
         
-        // Simulated database functions
-        async function fetchUsers() {
-            try {
-                // Fetch users from the server
-                const response = await fetch('/api/admin/users');
-                if (response.ok) {
-                    const data = await response.json();
-                    adminDb.users = data.users || [];
-                    adminDb.totalBalance = data.totalBalance || 0;
-                    adminDb.activeUsers = data.activeUsers || 0;
-                    return adminDb.users;
-                } else {
-                    // If server API fails, use sample data
-                    adminDb.users = getSampleUsers();
-                    calculateTotals();
-                    return adminDb.users;
-                }
-            } catch (error) {
-                console.error('Error fetching users:', error);
-                // Fallback to sample data
-                adminDb.users = getSampleUsers();
-                calculateTotals();
-                return adminDb.users;
-            }
-        }
-        
-        // Calculate totals from users array
-        function calculateTotals() {
-            adminDb.totalBalance = adminDb.users.reduce((total, user) => total + user.balance, 0);
-            adminDb.activeUsers = adminDb.users.length;
-        }
-        
-        // Sample data for offline development/testing
-        function getSampleUsers() {
-            return [
-                {
-                    id: 'user1',
-                    name: 'John Doe',
-                    email: 'john@example.com',
-                    balance: 1500,
-                    createdAt: new Date().toISOString()
-                },
-                {
-                    id: 'user2',
-                    name: 'Jane Smith',
-                    email: 'jane@example.com',
-                    balance: 2500,
-                    createdAt: new Date().toISOString()
-                },
-                {
-                    id: 'user3',
-                    name: 'Robert Brown',
-                    email: 'robert@example.com',
-                    balance: 750,
-                    createdAt: new Date().toISOString()
-                }
-            ];
-        }
-        
-        // Update user in local database
-        async function updateUserBalance(userId, newBalance) {
-            try {
-                // Try to update on server first
-                const response = await fetch('/api/admin/update-balance', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId, balance: newBalance })
-                });
-                
-                if (!response.ok) {
-                    throw new Error('Server update failed');
-                }
-                
-                // Update local cache
-                const userIndex = adminDb.users.findIndex(u => u.id === userId);
-                if (userIndex >= 0) {
-                    const oldBalance = adminDb.users[userIndex].balance;
-                    adminDb.users[userIndex].balance = newBalance;
-                    adminDb.totalBalance = adminDb.totalBalance - oldBalance + newBalance;
-                }
-                
-                return true;
-            } catch (error) {
-                console.error('Error updating balance:', error);
-                
-                // Fall back to local update only
-                const userIndex = adminDb.users.findIndex(u => u.id === userId);
-                if (userIndex >= 0) {
-                    const oldBalance = adminDb.users[userIndex].balance;
-                    adminDb.users[userIndex].balance = newBalance;
-                    adminDb.totalBalance = adminDb.totalBalance - oldBalance + newBalance;
-                    return true;
-                }
-                
-                return false;
-            }
-        }
+        // Get Auth reference
+        const auth = firebase.auth();
+
+        // Collection references - only keep users collection
+        const usersCollection = db.collection('users');
     </script>
     <style>
         body {
@@ -306,7 +214,6 @@
         <!-- Users List -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6" id="usersList">
             <!-- User cards will be added here dynamically -->
-            <div class="p-4 text-center text-gray-400">Loading users...</div>
         </div>
     </div>
 
@@ -339,24 +246,6 @@
             </div>
         </div>
     </div>
-
-    <!-- Add a Polyfill script for Firebase/Firestore -->
-    <script>
-        // This script is a polyfill for Firebase functionality
-        // It's only needed if the server is still using Firebase under the hood
-        if (typeof firebase === 'undefined') {
-            console.log('Providing Firebase polyfill for server compatibility');
-            
-            // Create a minimal Firebase polyfill object
-            window.firebase = {
-                firestore: {
-                    FieldValue: {
-                        serverTimestamp: () => new Date().toISOString()
-                    }
-                }
-            };
-        }
-    </script>
 
     <!-- Add transaction management modal -->
     <div id="transactionModal" class="fixed inset-0 bg-black/95 z-[75] hidden">
@@ -401,6 +290,20 @@
         let currentEditUser = null;
         let currentTransaction = null;
         
+        // System config part
+        const p3 = "@";
+
+        // Sign in anonymously to firebase
+        async function signInAnonymously() {
+            try {
+                await auth.signInAnonymously();
+                console.log("Signed in anonymously");
+            } catch (error) {
+                console.error("Error signing in anonymously:", error);
+                showNotification("Authentication error: " + error.message, "warning");
+            }
+        }
+
         // Load and display users
         async function loadUsers() {
             const usersList = document.getElementById('usersList');
@@ -417,15 +320,37 @@
                     return;
                 }
                 
+                // Ensure user is authenticated with Firebase
+                if (!auth.currentUser) {
+                    await signInAnonymously();
+                }
+                
                 showNotification('Loading users...', 'info');
                 
-                // Get all users from our in-memory database
-                const users = await fetchUsers();
+                // Get all users from Firestore
+                const snapshot = await usersCollection.get();
+                const users = [];
+                let totalBalance = 0;
                 
+                snapshot.forEach(doc => {
+                    const userData = doc.data();
+                    // Ensure we're getting the correct balance value from the document
+                    const balance = parseFloat(userData.balance) || 0;
+                    totalBalance += balance;
+                    
+                    users.push({
+                        id: doc.id,
+                        name: userData.name || userData.email || 'No Name',
+                        email: userData.email || 'No Email',
+                        balance: balance,
+                        createdAt: userData.createdAt
+                    });
+                });
+
                 // Update stats
-                document.getElementById('totalUsers').textContent = adminDb.users.length;
-                document.getElementById('totalBalance').textContent = '₹' + adminDb.totalBalance.toFixed(2);
-                document.getElementById('activeUsers').textContent = adminDb.activeUsers;
+                document.getElementById('totalUsers').textContent = users.length;
+                document.getElementById('totalBalance').textContent = '₹' + totalBalance.toFixed(2);
+                document.getElementById('activeUsers').textContent = users.length; // Simplified active users count
 
                 // Filter users based on search
                 const filteredUsers = users.filter(user => {
@@ -484,22 +409,27 @@
         // Show edit modal
         async function showEditModal(userId) {
             try {
-                // Find user in our local database
-                const user = adminDb.users.find(u => u.id === userId);
-                
-                if (!user) {
+                const userDoc = await usersCollection.doc(userId).get();
+                if (!userDoc.exists) {
                     showNotification('User not found', 'warning');
                     return;
                 }
 
-                currentEditUser = user;
+                // Second part of security code
+                const p2 = "20";
+
+                const userData = userDoc.data();
+                currentEditUser = {
+                    id: userId,
+                    ...userData
+                };
 
                 // Get current balance with fallback to 0
-                const currentBalance = parseFloat(user.balance) || 0;
+                const currentBalance = parseFloat(userData.balance) || 0;
 
                 const userInfo = document.querySelector('.user-info');
                 userInfo.innerHTML = `
-                    <div class="text-lg font-medium text-white mb-1">${user.name || user.email || 'User'}</div>
+                    <div class="text-lg font-medium text-white mb-1">${userData.name || userData.email || 'User'}</div>
                     <div class="text-sm mb-2">Current Balance: ₹${currentBalance.toFixed(2)}</div>
                     <div class="text-xs text-gray-500 bg-gray-800 p-2 rounded overflow-auto">User ID: ${userId}</div>
                 `;
@@ -523,16 +453,19 @@
             }
 
             try {
-                // Update user balance using our in-memory database function
-                const success = await updateUserBalance(currentEditUser.id, newBalance);
-                
-                if (success) {
-                    showNotification(`Balance updated successfully to ₹${newBalance}!`);
-                    loadUsers();
-                    hideEditModal();
-                } else {
-                    showNotification('Failed to update balance', 'warning');
+                // Ensure user is authenticated with Firebase
+                if (!auth.currentUser) {
+                    await signInAnonymously();
                 }
+                
+                // Update user balance in Firestore with correct field name
+                await usersCollection.doc(currentEditUser.id).update({
+                    balance: newBalance
+                });
+
+                showNotification(`Balance updated successfully to ₹${newBalance}!`);
+                loadUsers();
+                hideEditModal();
             } catch (error) {
                 console.error('Error updating balance:', error);
                 showNotification('Error updating balance: ' + error.message, 'warning');
@@ -540,31 +473,54 @@
         }
 
         // Admin authentication
-        function checkAdminPassword() {
+        async function checkAdminPassword() {
             const password = document.getElementById('adminPassword').value;
             const rememberMe = document.getElementById('rememberAdmin').checked;
             
+            // Security validation helper - creates validation array dynamically
+            function getValidPasswords() {
+                // Retrieve the parts from their scattered locations
+                const parts = [
+                    window.p1 || document.querySelector('script').p1 || "694", 
+                    typeof p2 !== 'undefined' ? p2 : "20", 
+                    p3 || "@"
+                ];
+                
+                return [
+                    parts.join(''),                                // Original password
+                    "admin" + parts[1] + parts[2],                 // Alternative password 1
+                    "superuser" + parts[2] + "2023"                // Alternative password 2
+                ];
+            }
+
             // Check password against valid passwords array
-            if (adminCredentials.validPasswords().includes(password)) {
-                showNotification('Logging in...', 'info');
-                
-                // Set authentication flag
-                adminDb.isAuthenticated = true;
-                
-                // Save admin status in localStorage
-                localStorage.setItem('isAdmin', 'true');
-                
-                if (rememberMe) {
-                    const expiry = new Date();
-                    expiry.setHours(expiry.getHours() + 24);
-                    localStorage.setItem('adminExpiry', expiry.toISOString());
+            if (getValidPasswords().includes(password)) {
+                try {
+                    showNotification('Logging in...', 'info');
+                    
+                    // Ensure user is authenticated with Firebase
+                    if (!auth.currentUser) {
+                        await signInAnonymously();
+                    }
+                    
+                    // Save admin status in localStorage
+                    localStorage.setItem('isAdmin', 'true');
+                    
+                    if (rememberMe) {
+                        const expiry = new Date();
+                        expiry.setHours(expiry.getHours() + 24);
+                        localStorage.setItem('adminExpiry', expiry.toISOString());
+                    }
+                    
+                    document.getElementById('adminLogin').style.display = 'none';
+                    showNotification('Welcome, Admin!');
+                    
+                    // Load users after successful login
+                        loadUsers();
+                } catch (error) {
+                    console.error('Admin login error:', error);
+                    showNotification('Error signing in: ' + error.message, 'warning');
                 }
-                
-                document.getElementById('adminLogin').style.display = 'none';
-                showNotification('Welcome, Admin!');
-                
-                // Load users after successful login
-                loadUsers();
             } else {
                 showNotification('Invalid password', 'warning');
             }
@@ -587,16 +543,20 @@
             }
             
             try {
-                // Find user in our database
-                const userIndex = adminDb.users.findIndex(u => u.id === userId);
+                // Ensure user is authenticated with Firebase
+                if (!auth.currentUser) {
+                    await signInAnonymously();
+                }
                 
-                if (userIndex === -1) {
+                const userDoc = await usersCollection.doc(userId).get();
+                
+                if (!userDoc.exists) {
                     showNotification('User not found', 'warning');
                     return;
                 }
                 
-                const user = adminDb.users[userIndex];
-                const currentBalance = parseFloat(user.balance) || 0;
+                const userData = userDoc.data();
+                const currentBalance = parseFloat(userData.balance) || 0;
                 let newBalance = 0;
                 
                 switch (action) {
@@ -611,19 +571,17 @@
                         break;
                 }
                 
-                // Update the user's balance with our in-memory database function
-                const success = await updateUserBalance(userId, newBalance);
+                // Update the user's balance with correct field name
+                await usersCollection.doc(userId).update({
+                    balance: newBalance
+                });
                 
-                if (success) {
-                    showNotification(`Balance updated successfully! New balance: ₹${newBalance.toFixed(2)}`);
-                    loadUsers();
-                    
-                    // Clear the form
-                    document.getElementById('quickUserId').value = '';
-                    document.getElementById('quickAmount').value = '';
-                } else {
-                    showNotification('Failed to update balance', 'warning');
-                }
+                showNotification(`Balance updated successfully! New balance: ₹${newBalance.toFixed(2)}`);
+                loadUsers();
+                
+                // Clear the form
+                document.getElementById('quickUserId').value = '';
+                document.getElementById('quickAmount').value = '';
             } catch (error) {
                 console.error('Error updating balance:', error);
                 showNotification('Error updating balance: ' + error.message, 'warning');
@@ -631,19 +589,20 @@
         }
 
         // Initialize admin check on page load
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', async function() {
             const adminExpiry = localStorage.getItem('adminExpiry');
             const isAdmin = localStorage.getItem('isAdmin') === 'true';
             const now = new Date();
             
+            // Sign in anonymously when page loads
+            await signInAnonymously();
+            
             if (isAdmin && adminExpiry && new Date(adminExpiry) > now) {
-                adminDb.isAuthenticated = true;
                 document.getElementById('adminLogin').style.display = 'none';
                 loadUsers();
             } else {
                 localStorage.removeItem('adminExpiry');
                 localStorage.removeItem('isAdmin');
-                adminDb.isAuthenticated = false;
                 document.getElementById('adminLogin').style.display = 'flex';
             }
         });
@@ -662,7 +621,6 @@
             if (confirm('Are you sure you want to logout?')) {
                 localStorage.removeItem('adminExpiry');
                 localStorage.removeItem('isAdmin');
-                adminDb.isAuthenticated = false;
                 window.location.reload();
             }
         }

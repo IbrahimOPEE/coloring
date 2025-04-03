@@ -16,25 +16,6 @@ const LOCAL_HISTORY_FILE = path.join(__dirname, 'local_game_history.json');
 let isSchedulerRunning = false;
 let serverPort = 3456; // Fixed unique port number
 
-// Track bets for current period
-let currentPeriodBets = {
-  period: '',
-  bets: {
-    RED: 0,
-    GREEN: 0,
-    VIOLET: 0
-  },
-  numbers: {
-    0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 
-    5: 0, 6: 0, 7: 0, 8: 0, 9: 0
-  },
-  sizes: {
-    BIG: 0,
-    SMALL: 0
-  },
-  timestamp: new Date()
-};
-
 const app = express();
 
 // Configure CORS to allow requests from your domain
@@ -94,141 +75,6 @@ app.get('/api/config', (req, res) => {
   });
 });
 
-// Admin API endpoints for admin panel
-app.get('/api/admin/users', async (req, res) => {
-  try {
-    // Get all users from Firestore
-    const snapshot = await db.collection('users').get();
-    const users = [];
-    let totalBalance = 0;
-    
-    snapshot.forEach(doc => {
-      const userData = doc.data();
-      const balance = parseFloat(userData.balance) || 0;
-      totalBalance += balance;
-      
-      users.push({
-        id: doc.id,
-        name: userData.name || userData.email || 'No Name',
-        email: userData.email || 'No Email',
-        balance: balance,
-        createdAt: userData.createdAt ? userData.createdAt.toDate().toISOString() : new Date().toISOString()
-      });
-    });
-    
-    res.json({
-      users,
-      totalBalance,
-      activeUsers: users.length
-    });
-  } catch (error) {
-    console.error('Error fetching users for admin panel:', error);
-    res.status(500).json({ error: 'Failed to fetch users' });
-  }
-});
-
-// Endpoint to update user balance
-app.post('/api/admin/update-balance', async (req, res) => {
-  try {
-    const { userId, balance } = req.body;
-    
-    if (!userId || balance === undefined || isNaN(parseFloat(balance))) {
-      return res.status(400).json({ error: 'Invalid request parameters' });
-    }
-    
-    // Update the user balance in Firestore
-    await db.collection('users').doc(userId).update({
-      balance: parseFloat(balance)
-    });
-    
-    res.json({ success: true, message: 'Balance updated successfully' });
-  } catch (error) {
-    console.error('Error updating user balance:', error);
-    res.status(500).json({ error: 'Failed to update balance' });
-  }
-});
-
-// New endpoint to track bets in real-time
-app.post('/api/place-bet', async (req, res) => {
-  try {
-    const { userId, betType, betValue, amount, period } = req.body;
-    
-    if (!userId || !betType || !betValue || !amount || !period) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-    
-    const currentPeriod = getPeriod();
-    if (period !== currentPeriod) {
-      return res.status(400).json({ error: 'Invalid period', currentPeriod });
-    }
-    
-    // Reset bet tracking if period has changed
-    if (currentPeriodBets.period !== currentPeriod) {
-      currentPeriodBets = {
-        period: currentPeriod,
-        bets: { RED: 0, GREEN: 0, VIOLET: 0 },
-        numbers: { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0 },
-        sizes: { BIG: 0, SMALL: 0 },
-        timestamp: new Date()
-      };
-    }
-    
-    // Track the bet based on type
-    if (betType === 'color') {
-      currentPeriodBets.bets[betValue] = (currentPeriodBets.bets[betValue] || 0) + 1;
-    } else if (betType === 'number') {
-      currentPeriodBets.numbers[betValue] = (currentPeriodBets.numbers[betValue] || 0) + 1;
-    } else if (betType === 'size') {
-      currentPeriodBets.sizes[betValue] = (currentPeriodBets.sizes[betValue] || 0) + 1;
-    }
-    
-    // Store the bet in Firestore
-    try {
-      // Record the individual bet
-      await db.collection('bets').add({
-        userId,
-        betType,
-        betValue,
-        amount,
-        period,
-        timestamp: admin.firestore.FieldValue.serverTimestamp()
-      });
-      
-      // Update period bets collection with aggregated data
-      await db.collection('periodBets').doc(currentPeriod).set(currentPeriodBets, { merge: true });
-      
-      console.log(`Bet placed: User ${userId} bet ${amount} on ${betValue} (${betType}) for period ${period}`);
-      
-    } catch (firestoreError) {
-      console.error('Error saving bet to Firestore:', firestoreError);
-      // Continue even if Firestore fails
-    }
-    
-    res.json({ 
-      success: true, 
-      message: 'Bet placed successfully',
-      currentBets: currentPeriodBets
-    });
-    
-  } catch (error) {
-    console.error('Error processing bet:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// New endpoint to get current bets
-app.get('/api/current-bets', (req, res) => {
-  const currentPeriod = getPeriod();
-  
-  // Update period if needed
-  if (currentPeriodBets.period !== currentPeriod) {
-    currentPeriodBets.period = currentPeriod;
-    currentPeriodBets.timestamp = new Date();
-  }
-  
-  res.json(currentPeriodBets);
-});
-
 // Function to get previous results from Firestore
 async function getPreviousResults(count = 2) {
   try {
@@ -256,173 +102,74 @@ async function getPreviousResults(count = 2) {
   }
 }
 
-// Modified function to generate result based on minority bets
+// Function to generate a mock result when Firestore is unavailable
 async function generateMockResult(period) {
-  try {
-    // Try to get saved bets for this period
-    let periodBetsData;
-    
-    try {
-      const periodBetsDoc = await db.collection('periodBets').doc(period).get();
-      if (periodBetsDoc.exists) {
-        periodBetsData = periodBetsDoc.data();
-        console.log(`Using saved bets data for period ${period}:`, periodBetsData);
-      } else {
-        console.log(`No saved bets found for period ${period}, using current bets data`);
-        periodBetsData = currentPeriodBets;
-      }
-    } catch (error) {
-      console.error(`Error getting bets for period ${period}:`, error);
-      periodBetsData = currentPeriodBets;
-    }
-    
-    // Determine the minority bet for colors
-    let colorCounts = periodBetsData.bets || { RED: 0, GREEN: 0, VIOLET: 0 };
-    let numberCounts = periodBetsData.numbers || { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0 };
-    let sizeCounts = periodBetsData.sizes || { BIG: 0, SMALL: 0 };
-    
-    // Find the color with the minimum bets (among those with at least one bet)
-    let minorityColor;
-    let minBets = Infinity;
-    
-    // Consider all colors that have at least one bet
-    for (const [color, count] of Object.entries(colorCounts)) {
-      if (count > 0 && count < minBets) {
-        minorityColor = color;
-        minBets = count;
-      }
-    }
-    
-    // If there are no bets or all colors have the same bets
-    if (!minorityColor || minBets === Infinity) {
-      // Fallback to deterministic approach
-      const [datePart, periodPart] = period.split('-');
-      const year = parseInt(datePart.substring(0, 2));
-      const month = parseInt(datePart.substring(2, 4));
-      const day = parseInt(datePart.substring(4, 6));
-      const hour = parseInt(datePart.substring(6, 8));
-      const minute = parseInt(datePart.substring(8, 10));
-      
-      const periodValue = (year * 31 + day + month) + (hour * 60 + minute);
-      const number = periodValue % 10;
-      
-      let color;
-      if (number === 0) {
-        color = 'VIOLET';
-      } else if (number === 5) {
-        color = 'VIOLET GREEN'; 
-      } else if (number % 2 === 0) {
-        color = 'RED';
-      } else {
-        color = 'GREEN';
-      }
-      
-      const size = number >= 5 ? 'BIG' : 'SMALL';
-      
-      console.log(`No bets data available for period ${period}, using fallback deterministic result`);
-      
-      return { 
-        number, 
-        size, 
-        color,
-        timestamp: new Date().toISOString(),
-        period,
-        isMock: false,
-        betData: periodBetsData
-      };
-    }
-    
-    // Now find a number that corresponds to the minority color
-    let candidateNumbers = [];
-    let number;
-    
-    if (minorityColor === 'VIOLET') {
-      candidateNumbers = [0, 5]; // Numbers that can be VIOLET
-    } else if (minorityColor === 'RED') {
-      candidateNumbers = [2, 4, 6, 8]; // Even numbers except 0
-    } else if (minorityColor === 'GREEN') {
-      candidateNumbers = [1, 3, 7, 9]; // Odd numbers except 5
-    } else if (minorityColor === 'VIOLET GREEN') {
-      candidateNumbers = [5]; // Only 5 can be VIOLET GREEN
-    }
-    
-    // Find the number with the minimum bets among candidates
-    let minNumberBets = Infinity;
-    for (const num of candidateNumbers) {
-      const count = numberCounts[num] || 0;
-      if (count < minNumberBets) {
-        minNumberBets = count;
-        number = num;
-      }
-    }
-    
-    // If there are no specific number bets, choose one randomly from candidates
-    if (number === undefined) {
-      number = candidateNumbers[0]; // Default to first candidate
-    }
-    
-    // Determine size based on number
-    const size = number >= 5 ? 'BIG' : 'SMALL';
-    
-    // Final color determination
-    let color;
-    if (number === 0) {
-      color = 'VIOLET';
-    } else if (number === 5) {
-      color = 'VIOLET GREEN';
-    } else if (number % 2 === 0) {
-      color = 'RED';
-    } else {
-      color = 'GREEN';
-    }
-    
-    console.log(`Generated minority-favoring result for period ${period}: Number ${number}, Color ${color}, Size ${size}`);
-    
-    return { 
-      number, 
-      size, 
-      color,
-      timestamp: new Date().toISOString(),
-      period,
-      isMock: false,
-      betData: periodBetsData
-    };
-  } catch (error) {
-    console.error(`Error in generateMockResult for period ${period}:`, error);
-    
-    // Fallback to fully deterministic approach if anything fails
-    const [datePart, periodPart] = period.split('-');
-    const year = parseInt(datePart.substring(0, 2));
-    const month = parseInt(datePart.substring(2, 4));
-    const day = parseInt(datePart.substring(4, 6));
-    const hour = parseInt(datePart.substring(6, 8));
-    const minute = parseInt(datePart.substring(8, 10));
-    
-    const periodValue = (year * 31 + day + month) + (hour * 60 + minute);
-    const number = periodValue % 10;
-    
-    let color;
-    if (number === 0) {
-      color = 'VIOLET';
-    } else if (number === 5) {
-      color = 'VIOLET GREEN';
-    } else if (number % 2 === 0) {
-      color = 'RED';
-    } else {
-      color = 'GREEN';
-    }
-    
-    const size = number >= 5 ? 'BIG' : 'SMALL';
-    
-    return { 
-      number, 
-      size, 
-      color,
-      timestamp: new Date().toISOString(),
-      period,
-      isMock: false
-    };
+  // Convert period string to a better numeric seed
+  const [datePart, periodPart] = period.split('-');
+  // Extract components from datePart (YYMMDDHHMI format)
+  const year = parseInt(datePart.substring(0, 2));
+  const month = parseInt(datePart.substring(2, 4));
+  const day = parseInt(datePart.substring(4, 6));
+  const hour = parseInt(datePart.substring(6, 8));
+  const minute = parseInt(datePart.substring(8, 10));
+  
+  // Create a more unique seed by combining all components
+  const periodSeed = (year * 31 + day) * 24 * 60 + (hour * 60 + minute) + (periodPart === '1' ? 0 : 30);
+  console.log('Using period seed for random generation:', periodSeed);
+  
+  // Improved seeded random function with better distribution
+  const seededRandom = (salt = 1) => {
+    let x = periodSeed + salt;
+    x = ((x << 13) ^ x) * 0x45d9f3b;
+    x = ((x << 17) ^ x) * 0x45d9f3b;
+    x = (x ^ (x >> 15)) >>> 0;
+    return (x % 1000000) / 1000000;
+  };
+  
+  // Generate number first (0-9)
+  const numberRandom = seededRandom(1);
+  let number;
+  
+  // More balanced number distribution
+  if (numberRandom < 0.1) {
+    number = 0; // 10% chance for 0
+  } else if (numberRandom < 0.2) {
+    number = 5; // 10% chance for 5
+  } else {
+    // Distribute remaining numbers (1-4, 6-9) evenly
+    const remainingNumbers = [1, 2, 3, 4, 6, 7, 8, 9];
+    const index = Math.floor(seededRandom(2) * remainingNumbers.length);
+    number = remainingNumbers[index];
   }
+  
+  // Determine color based on number and additional randomness
+  let color;
+  const colorRandom = seededRandom(3);
+  
+  if (number === 0) {
+    color = 'VIOLET';
+  } else if (number === 5) {
+    color = colorRandom < 0.5 ? 'VIOLET' : 'VIOLET GREEN';
+  } else if (number % 2 === 0) {
+    color = 'RED';
+  } else {
+    color = 'GREEN';
+  }
+  
+  // Determine size
+  const size = number >= 5 ? 'BIG' : 'SMALL';
+  
+  const result = { 
+    number, 
+    size, 
+    color,
+    timestamp: new Date().toISOString(),
+    period,
+    isMock: false
+  };
+  
+  console.log(`Generated deterministic result for period ${period}:`, result);
+  return result;
 }
 
 // Result generation function with deterministic output
@@ -549,9 +296,9 @@ app.get('/api/latest-result', async (req, res) => {
     const completedPeriod = getCompletedPeriod();
     console.log('Getting result for completed period:', completedPeriod);
     
-    // Generate new result for this period using the deterministic function
+    // Generate new result for this period
     console.log('Generating new result for period:', completedPeriod);
-    const result = await generateAndSaveResult(completedPeriod);
+    const result = await generateMockResult(completedPeriod);
     
     if (!result) {
       console.error('Failed to generate result');
@@ -752,20 +499,7 @@ app.post('/api/test-local-save', (req, res) => {
   }
 });
 
-// At the end of a period, update the currentPeriodBets
-function resetCurrentPeriodBets() {
-  const newPeriod = getPeriod();
-  currentPeriodBets = {
-    period: newPeriod,
-    bets: { RED: 0, GREEN: 0, VIOLET: 0 },
-    numbers: { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0 },
-    sizes: { BIG: 0, SMALL: 0 },
-    timestamp: new Date()
-  };
-  console.log(`Reset current period bets for new period ${newPeriod}`);
-}
-
-// Modified scheduler to reset bet tracking
+// Result generation scheduler
 async function scheduleResultGeneration() {
   const now = new Date();
   const seconds = now.getSeconds();
@@ -778,9 +512,6 @@ async function scheduleResultGeneration() {
     try {
       // Get the period that just ended
       const completedPeriod = getCompletedPeriod();
-      
-      // Reset bet tracking for the new period
-      resetCurrentPeriodBets();
       
       // Check if a result already exists for this period
       let existingResultDoc;
