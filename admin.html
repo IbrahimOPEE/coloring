@@ -6,9 +6,9 @@
     <title>Admin Panel - Game UI</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <!-- Add Firebase SDKs - Including Auth -->
+    <!-- Add Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gst    atic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <!-- Firebase Config -->
     <script>
@@ -20,7 +20,7 @@
             apiKey: "AIzaSyCHaGjJ-t3DCE7xY08C6aV7w35xxjMZpdc",
             authDomain: "coloring-705b5.firebaseapp.com",
             projectId: "coloring-705b5",
-            storageBucket: "coloring-705b5.firebasestorage.app",
+            storageBucket: "coloring-705b5.appspot.com",
             messagingSenderId: "686022960865",
             appId: "1:686022960865:web:a9a5203d8b7d98f98ab9a0",
             measurementId: "G-3MZYE1BP0K"
@@ -35,7 +35,7 @@
         // Get Auth reference
         const auth = firebase.auth();
 
-        // Collection references - only keep users collection
+        // Collection references
         const usersCollection = db.collection('users');
     </script>
     <style>
@@ -293,17 +293,6 @@
         // System config part
         const p3 = "@";
 
-        // Sign in anonymously to firebase
-        async function signInAnonymously() {
-            try {
-                await auth.signInAnonymously();
-                console.log("Signed in anonymously");
-            } catch (error) {
-                console.error("Error signing in anonymously:", error);
-                showNotification("Authentication error: " + error.message, "warning");
-            }
-        }
-
         // Load and display users
         async function loadUsers() {
             const usersList = document.getElementById('usersList');
@@ -318,11 +307,6 @@
                     showNotification('Admin authentication required', 'warning');
                     document.getElementById('adminLogin').style.display = 'flex';
                     return;
-                }
-                
-                // Ensure user is authenticated with Firebase
-                if (!auth.currentUser) {
-                    await signInAnonymously();
                 }
                 
                 showNotification('Loading users...', 'info');
@@ -349,7 +333,7 @@
 
                 // Update stats
                 document.getElementById('totalUsers').textContent = users.length;
-                document.getElementById('totalBalance').textContent = '₹' + totalBalance.toFixed(2);
+                document.getElementById('totalBalance').textContent = totalBalance.toFixed(2);
                 document.getElementById('activeUsers').textContent = users.length; // Simplified active users count
 
                 // Filter users based on search
@@ -427,7 +411,7 @@
                 // Get current balance with fallback to 0
                 const currentBalance = parseFloat(userData.balance) || 0;
 
-                const userInfo = document.querySelector('.user-info');
+                const userInfo = document.querySelector('#editModal .user-info');
                 userInfo.innerHTML = `
                     <div class="text-lg font-medium text-white mb-1">${userData.name || userData.email || 'User'}</div>
                     <div class="text-sm mb-2">Current Balance: ₹${currentBalance.toFixed(2)}</div>
@@ -453,12 +437,7 @@
             }
 
             try {
-                // Ensure user is authenticated with Firebase
-                if (!auth.currentUser) {
-                    await signInAnonymously();
-                }
-                
-                // Update user balance in Firestore with correct field name
+                // Update user balance in Firestore
                 await usersCollection.doc(currentEditUser.id).update({
                     balance: newBalance
                 });
@@ -498,11 +477,6 @@
                 try {
                     showNotification('Logging in...', 'info');
                     
-                    // Ensure user is authenticated with Firebase
-                    if (!auth.currentUser) {
-                        await signInAnonymously();
-                    }
-                    
                     // Save admin status in localStorage
                     localStorage.setItem('isAdmin', 'true');
                     
@@ -516,7 +490,7 @@
                     showNotification('Welcome, Admin!');
                     
                     // Load users after successful login
-                        loadUsers();
+                    loadUsers();
                 } catch (error) {
                     console.error('Admin login error:', error);
                     showNotification('Error signing in: ' + error.message, 'warning');
@@ -543,11 +517,6 @@
             }
             
             try {
-                // Ensure user is authenticated with Firebase
-                if (!auth.currentUser) {
-                    await signInAnonymously();
-                }
-                
                 const userDoc = await usersCollection.doc(userId).get();
                 
                 if (!userDoc.exists) {
@@ -571,7 +540,7 @@
                         break;
                 }
                 
-                // Update the user's balance with correct field name
+                // Update the user's balance
                 await usersCollection.doc(userId).update({
                     balance: newBalance
                 });
@@ -589,13 +558,10 @@
         }
 
         // Initialize admin check on page load
-        document.addEventListener('DOMContentLoaded', async function() {
+        document.addEventListener('DOMContentLoaded', function() {
             const adminExpiry = localStorage.getItem('adminExpiry');
             const isAdmin = localStorage.getItem('isAdmin') === 'true';
             const now = new Date();
-            
-            // Sign in anonymously when page loads
-            await signInAnonymously();
             
             if (isAdmin && adminExpiry && new Date(adminExpiry) > now) {
                 document.getElementById('adminLogin').style.display = 'none';
