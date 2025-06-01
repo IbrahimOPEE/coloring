@@ -1,54 +1,6 @@
 {
   "results": [
     {
-      "number": 9,
-      "size": "BIG",
-      "color": "GREEN",
-      "timestamp": "2025-04-01T17:08:32.252Z",
-      "period": "2504012238-1",
-      "isMock": false
-    },
-    {
-      "number": 1,
-      "size": "SMALL",
-      "color": "GREEN",
-      "timestamp": "2025-04-01T17:09:01.528Z",
-      "period": "2504012238-2",
-      "isMock": false
-    },
-    {
-      "number": 8,
-      "size": "BIG",
-      "color": "RED",
-      "timestamp": "2025-04-02T09:26:01.489Z",
-      "period": "2504021455-2",
-      "isMock": false
-    },
-    {
-      "number": 6,
-      "size": "BIG",
-      "color": "RED",
-      "timestamp": "2025-04-02T09:29:01.557Z",
-      "period": "2504021458-2",
-      "isMock": false
-    },
-    {
-      "number": 6,
-      "size": "BIG",
-      "color": "RED",
-      "timestamp": "2025-04-02T09:29:31.524Z",
-      "period": "2504021459-1",
-      "isMock": false
-    },
-    {
-      "number": 7,
-      "size": "BIG",
-      "color": "GREEN",
-      "timestamp": "2025-04-02T09:30:01.523Z",
-      "period": "2504021459-2",
-      "isMock": false
-    },
-    {
       "number": 8,
       "size": "BIG",
       "color": "RED",
@@ -947,6 +899,54 @@
       "color": "VIOLET",
       "timestamp": "2025-05-30T15:49:32.951Z",
       "period": "2505302119-1",
+      "isMock": false
+    },
+    {
+      "number": 3,
+      "size": "SMALL",
+      "color": "GREEN",
+      "timestamp": "2025-06-01T12:47:31.531Z",
+      "period": "2506011817-1",
+      "isMock": false
+    },
+    {
+      "number": 4,
+      "size": "SMALL",
+      "color": "RED",
+      "timestamp": "2025-06-01T12:48:01.518Z",
+      "period": "2506011817-2",
+      "isMock": false
+    },
+    {
+      "number": 3,
+      "size": "SMALL",
+      "color": "GREEN",
+      "timestamp": "2025-06-01T12:48:31.517Z",
+      "period": "2506011818-1",
+      "isMock": false
+    },
+    {
+      "number": 3,
+      "size": "SMALL",
+      "color": "GREEN",
+      "timestamp": "2025-06-01T12:49:01.534Z",
+      "period": "2506011818-2",
+      "isMock": false
+    },
+    {
+      "number": 6,
+      "size": "BIG",
+      "color": "RED",
+      "timestamp": "2025-06-01T12:50:01.519Z",
+      "period": "2506011819-2",
+      "isMock": false
+    },
+    {
+      "number": 4,
+      "size": "SMALL",
+      "color": "RED",
+      "timestamp": "2025-06-01T12:50:31.516Z",
+      "period": "2506011820-1",
       "isMock": false
     }
   ]

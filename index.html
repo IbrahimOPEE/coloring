@@ -1078,7 +1078,7 @@
                             type: 'number',
                             value: selectedNumber,
                             amount: betAmount,
-                            multiplier: 4
+                            multiplier: 2
                         };
                     }
                 } else if (lastBetType === 'size' && selectedSize) {
@@ -1171,11 +1171,9 @@
                 };
 
                 if (isWin) {
-                    let winAmount = currentBet.amount * currentBet.multiplier;
-                    if (currentBet.value === 'VIOLET' && result.number === 0) {
-                        winAmount *= 2;
-                    }
-
+                    // Always multiply by 2x for any winning bet
+                    let winAmount = currentBet.amount * 2;
+                    
                     transaction.winAmount = winAmount;
                     
                     try {
