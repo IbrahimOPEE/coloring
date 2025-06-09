@@ -3,6 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const net = require('net');
 const fs = require('fs');
+const firebase = require('firebase-admin');
 
 // Import Firebase Admin from our configuration file
 const { admin, firestore, isUnauthenticatedMode } = require('./firebase-admin-config');
@@ -102,8 +103,67 @@ async function getPreviousResults(count = 2) {
   }
 }
 
+// Function to track bets for the current period
+async function trackBet(period, color, amount) {
+  try {
+    const betRef = db.collection('currentBets').doc(period);
+    const betDoc = await betRef.get();
+    
+    if (!betDoc.exists) {
+      // Initialize bet counts for this period
+      await betRef.set({
+        red: 0,
+        green: 0,
+        violet: 0,
+        totalAmount: 0
+      });
+    }
+    
+    // Update the bet count and total amount
+    await betRef.update({
+      [color.toLowerCase()]: firebase.firestore.FieldValue.increment(1),
+      totalAmount: firebase.firestore.FieldValue.increment(amount)
+    });
+    
+    console.log(`Tracked bet for period ${period}: ${color} (${amount})`);
+  } catch (error) {
+    console.error('Error tracking bet:', error);
+  }
+}
+
+// Function to get current bet counts
+async function getCurrentBetCounts(period) {
+  try {
+    const betRef = db.collection('currentBets').doc(period);
+    const betDoc = await betRef.get();
+    
+    if (!betDoc.exists) {
+      return {
+        red: 0,
+        green: 0,
+        violet: 0,
+        totalAmount: 0
+      };
+    }
+    
+    return betDoc.data();
+  } catch (error) {
+    console.error('Error getting bet counts:', error);
+    return {
+      red: 0,
+      green: 0,
+      violet: 0,
+      totalAmount: 0
+    };
+  }
+}
+
 // Function to generate a mock result when Firestore is unavailable
 async function generateMockResult(period) {
+  // Get current bet counts
+  const betCounts = await getCurrentBetCounts(period);
+  console.log('Current bet counts:', betCounts);
+  
   // Convert period string to a better numeric seed
   const [datePart, periodPart] = period.split('-');
   // Extract components from datePart (YYMMDDHHMI format)
@@ -142,18 +202,42 @@ async function generateMockResult(period) {
     number = remainingNumbers[index];
   }
   
-  // Determine color based on number and additional randomness
+  // Determine color based on bet counts
   let color;
-  const colorRandom = seededRandom(3);
+  const totalBets = betCounts.red + betCounts.green + betCounts.violet;
   
-  if (number === 0) {
-    color = 'VIOLET';
-  } else if (number === 5) {
-    color = colorRandom < 0.5 ? 'VIOLET' : 'VIOLET GREEN';
-  } else if (number % 2 === 0) {
-    color = 'RED';
+  if (totalBets > 0) {
+    // Find which color has the least bets
+    let minBets = Math.min(betCounts.red, betCounts.green, betCounts.violet);
+    let colorsWithLeastBets = [];
+    
+    // Only include colors that have the minimum number of bets
+    if (betCounts.red === minBets) colorsWithLeastBets.push('RED');
+    if (betCounts.green === minBets) colorsWithLeastBets.push('GREEN');
+    if (betCounts.violet === minBets) colorsWithLeastBets.push('VIOLET');
+    
+    // If all colors have the same number of bets, use all colors
+    if (colorsWithLeastBets.length === 3) {
+      colorsWithLeastBets = ['RED', 'GREEN', 'VIOLET'];
+    }
+    
+    // Always select from colors with the least bets
+    const randomIndex = Math.floor(seededRandom(3) * colorsWithLeastBets.length);
+    color = colorsWithLeastBets[randomIndex];
+    
+    console.log('Color selection:', {
+      betCounts: betCounts,
+      minBets: minBets,
+      colorsWithLeastBets: colorsWithLeastBets,
+      selectedColor: color
+    });
   } else {
-    color = 'GREEN';
+    // If no bets, use simple color logic
+    if (number % 2 === 0) {
+      color = 'RED';
+    } else {
+      color = 'GREEN';
+    }
   }
   
   // Determine size
@@ -165,10 +249,11 @@ async function generateMockResult(period) {
     color,
     timestamp: new Date().toISOString(),
     period,
-    isMock: false
+    isMock: false,
+    betCounts // Include bet counts in the result for transparency
   };
   
-  console.log(`Generated deterministic result for period ${period}:`, result);
+  console.log(`Generated result for period ${period}:`, result);
   return result;
 }
 
@@ -552,6 +637,22 @@ if (!isSchedulerRunning) {
 } else {
   console.log('Result generation scheduler already running, skipping initialization');
 }
+
+// Add a route to track bets
+app.post('/api/track-bet', async (req, res) => {
+  try {
+    const { period, color, amount } = req.body;
+    if (!period || !color || !amount) {
+      return res.status(400).json({ error: 'Missing required parameters' });
+    }
+    
+    await trackBet(period, color, amount);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error tracking bet:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // Start the server
 app.listen(serverPort, () => {

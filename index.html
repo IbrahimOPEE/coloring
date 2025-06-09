@@ -873,7 +873,29 @@
             }
 
             try {
-                // Deduct bet amount first
+                // Get current period
+                const currentPeriod = await getCurrentPeriod();
+                
+                // Track the bet in Firestore
+                if (type === 'color') {
+                    const response = await fetch('/api/track-bet', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            period: currentPeriod,
+                            color: value,
+                            amount: amount
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('Failed to track bet');
+                    }
+                }
+                
+                // Deduct bet amount
                 console.log(`Deducting ${amount} from wallet balance`);
                 await updateWalletBalance(-amount);
                 betProcessed = false;  // Reset bet processed flag
