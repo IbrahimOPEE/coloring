@@ -85,9 +85,14 @@
                 collections.users.doc(user.uid).onSnapshot(snapshot => {
                     if (snapshot.exists) {
                         const userData = snapshot.data();
-                        walletBalance = parseFloat(userData.balance) || 0;
-                        document.getElementById('walletBalance').textContent = walletBalance.toFixed(2);
-                        console.log('User balance updated from listener:', walletBalance);
+                        // Only update the balance if we're not currently processing a win
+                        if (!isWinBeingProcessed) {
+                            walletBalance = parseFloat(userData.balance) || 0;
+                            document.getElementById('walletBalance').textContent = walletBalance.toFixed(2);
+                            console.log('User balance updated from listener:', walletBalance);
+                        } else {
+                            console.log('Skipping balance update from listener because a win is being processed');
+                        }
                     } else {
                         console.error('User document does not exist in balance listener');
                     }
@@ -728,7 +733,7 @@
     </div>
 
     <!-- Win Popup -->
-    <div id="winPopup" class="fixed inset-0 bg-black/90 z-50 hidden flex items-center justify-center">
+    <div id="winPopup" class="fixed inset-0 bg-black/90 z-50 hidden items-center justify-center">
         <div class="bg-[#1a1f2e] rounded-xl p-6 w-[260px] text-center relative transform transition-transform duration-300 scale-90 win-popup-content">
             <div class="absolute -top-12 left-1/2 -translate-x-1/2">
                 <div class="w-24 h-24 rounded-full bg-gradient-to-r from-orange-500 to-yellow-500 flex items-center justify-center">
@@ -744,7 +749,7 @@
     </div>
 
     <!-- Lose Popup -->
-    <div id="losePopup" class="fixed inset-0 bg-black/90 z-50 hidden flex items-center justify-center">
+    <div id="losePopup" class="fixed inset-0 bg-black/90 z-50 hidden items-center justify-center">
         <div class="bg-[#1a1f2e] rounded-xl p-6 w-[260px] text-center relative transform transition-transform duration-300 scale-90 lose-popup-content">
             <div class="absolute -top-12 left-1/2 -translate-x-1/2">
                 <div class="w-24 h-24 rounded-full bg-gray-800 flex items-center justify-center">
@@ -827,6 +832,8 @@
             ifscCode: '',
             upiId: ''
         };
+        // Add a flag to prevent double balance updates
+        let isWinBeingProcessed = false;
 
         // Bet state management
         let currentColor = '';
@@ -897,145 +904,74 @@
                 console.log('Showing result for completed period:', completedPeriod);
                 
                 try {
-                // Fetch the result directly from the server API with no caching
-                const fetchOptions = {
-                    method: 'GET',
-                    headers: {
-                        'Cache-Control': 'no-cache, no-store, must-revalidate',
-                        'Pragma': 'no-cache',
-                        'Expires': '0'
+                    // Fetch the result directly from the server API with no caching
+                    const fetchOptions = {
+                        method: 'GET',
+                        headers: {
+                            'Cache-Control': 'no-cache, no-store, must-revalidate',
+                            'Pragma': 'no-cache',
+                            'Expires': '0'
+                        }
+                    };
+                    
+                    let apiUrl = '';
+                    try {
+                        // Get the current host and protocol
+                        const protocol = window.location.protocol;
+                        const hostname = window.location.hostname;
+                        const port = window.location.port;
+                        
+                        // Construct the base URL
+                        const baseUrl = `${protocol}//${hostname}${port ? ':' + port : ''}`;
+                        apiUrl = `${baseUrl}/api/latest-result`;
+                        console.log('Fetching result from:', apiUrl);
+                    } catch (urlError) {
+                        console.error('Error getting API URL:', urlError);
+                        // Fallback to relative URL
+                        apiUrl = '/api/latest-result';
+                        console.log('Using fallback URL:', apiUrl);
                     }
-                };
-                
-                let apiUrl = '';
-                try {
-                    // Get the current host and protocol
-                    const protocol = window.location.protocol;
-                    const hostname = window.location.hostname;
-                    const port = window.location.port;
                     
-                    // Construct the base URL
-                    const baseUrl = `${protocol}//${hostname}${port ? ':' + port : ''}`;
-                    apiUrl = `${baseUrl}/api/latest-result`;
-                    console.log('Fetching result from:', apiUrl);
-                } catch (urlError) {
-                    console.error('Error getting API URL:', urlError);
-                    // Fallback to relative URL
-                    apiUrl = '/api/latest-result';
-                    console.log('Using fallback URL:', apiUrl);
-                }
-                
-                const response = await fetch(apiUrl, fetchOptions);
-                
-                if (!response.ok) {
-                    console.error('Server returned error:', response.status, response.statusText);
-                    showNotification('Error connecting to server. Retrying...', 'warning');
+                    const response = await fetch(apiUrl, fetchOptions);
                     
-                    // Retry the server connection up to 3 times
-                    for (let i = 0; i < 3; i++) {
-                        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between retries
-                        try {
-                            const retryResponse = await fetch(apiUrl, fetchOptions);
-                            if (retryResponse.ok) {
-                                const result = await retryResponse.json();
-                                if (result && typeof result.number === 'number') {
-                                    console.log('Server connection successful after retry!');
-                                    processResultAndDisplay(result, completedPeriod);
-                                    return;
+                    if (!response.ok) {
+                        console.error('Server returned error:', response.status, response.statusText);
+                        showNotification('Error connecting to server. Retrying...', 'warning');
+                        
+                        // Retry the server connection up to 3 times
+                        for (let i = 0; i < 3; i++) {
+                            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between retries
+                            try {
+                                const retryResponse = await fetch(apiUrl, fetchOptions);
+                                if (retryResponse.ok) {
+                                    const result = await retryResponse.json();
+                                    if (result && typeof result.number === 'number') {
+                                        console.log('Server connection successful after retry!');
+                                        processResultAndDisplay(result, completedPeriod);
+                                        return;
+                                    }
                                 }
+                            } catch (retryError) {
+                                console.error(`Retry ${i + 1} failed:`, retryError);
                             }
-                        } catch (retryError) {
-                            console.error(`Retry ${i + 1} failed:`, retryError);
                         }
+                        
+                        showNotification('Could not connect to server after multiple attempts. Please try again later.', 'error');
+                        return;
                     }
                     
-                    showNotification('Could not connect to server after multiple attempts. Please try again later.', 'error');
-                    return;
-                }
-                
-                const result = await response.json();
-                console.log('Server connection successful!');
-                console.log('Raw result from server:', JSON.stringify(result));
-                
-                if (!result || typeof result.number !== 'number') {
-                    console.error('Invalid result format:', result);
-                    showNotification('Invalid result received from server. Please try again later.', 'error');
-                    return;
-                }
-                
-                // Process and display the valid result
-                processResultAndDisplay(result, completedPeriod);
-                
-                // Only process bet if there's a confirmed bet that hasn't been processed
-                if (currentBet && activeBetConfirmed && !betProcessed) {
-                        try {
-                    await processResult(result);
-                    betProcessed = true;  // Mark bet as processed
-                        } catch (betError) {
-                            console.error('Error processing bet result:', betError);
-                            showNotification('Error processing your bet', 'error');
-                        }
-                }
-                
-                // Reset bet states after showing result
-                resetBetStates();
-                
-                // Determine the correct color class based on the result
-                let colorClass = '';
-                if (result.color.includes('RED')) {
-                    colorClass = 'bg-red-500';
-                } else if (result.color.includes('GREEN')) {
-                    colorClass = 'bg-green-500';
-                } else if (result.color.includes('VIOLET')) {
-                    colorClass = 'bg-violet-500';
-                }
-                
-                // For number 0, it should always be VIOLET
-                if (result.number === 0) {
-                    colorClass = 'bg-violet-500';
-                }
-                
-                // For number 5, it can be both VIOLET and GREEN
-                if (result.number === 5 && result.color.includes('VIOLET')) {
-                    colorClass = 'bg-violet-500';
-                }
-                
-                console.log('Using color class:', colorClass, 'for color:', result.color);
-                console.log('Final result to display:', {
-                    number: result.number,
-                    size: result.size,
-                    color: result.color,
-                    colorClass: colorClass
-                });
-                
-                // Display result
-                resultContent.innerHTML = `
-                    <div class="text-center">
-                        <h2 class="text-orange-500 text-center text-lg font-medium mb-4">Round Result</h2>
-                        <div class="text-9xl font-bold mb-6 text-white text-shadow">${result.number}</div>
-                        <div class="flex gap-4 justify-center">
-                            <div class="px-6 py-2 rounded-full text-white font-bold ${result.size === 'BIG' ? 'bg-orange-500' : 'bg-violet-500'} shadow-lg">
-                                ${result.size}
-                            </div>
-                            <div class="px-6 py-2 rounded-full text-white font-bold ${colorClass} shadow-lg">
-                                ${result.color}
-                            </div>
-                        </div>
-                    </div>
-                `;
-                
-                // Ensure the overlay is visible
-                resultOverlay.classList.remove('hidden');
-                resultOverlay.style.display = 'block';
-                
-                // Force an update of the record table
-                updateRecordTable();
-                
-                // Hide after 5 seconds
-                setTimeout(() => {
-                    resultOverlay.classList.add('hidden');
-                    resultOverlay.style.display = 'none';
-                }, 2000);
+                    const result = await response.json();
+                    console.log('Server connection successful!');
+                    console.log('Raw result from server:', JSON.stringify(result));
+                    
+                    if (!result || typeof result.number !== 'number') {
+                        console.error('Invalid result format:', result);
+                        showNotification('Invalid result received from server. Please try again later.', 'error');
+                        return;
+                    }
+                    
+                    // Process and display the valid result
+                    await processResultAndDisplay(result, completedPeriod);
                     
                 } catch (fetchError) {
                     console.error('Error fetching or displaying result:', fetchError);
@@ -1121,6 +1057,7 @@
 
         // Update processResult function
         async function processResult(result) {
+            console.log('processResult function called with result:', result);
             const user = auth.currentUser;
             if (!user || !activeBetConfirmed || !currentBet || betProcessed) {
                 console.log('Skipping processResult:', { 
@@ -1158,6 +1095,8 @@
                         break;
                 }
 
+                console.log('Bet result determined:', isWin ? 'WIN' : 'LOSS');
+
                 // Save transaction to Firestore
                 const transaction = {
                     userId: user.uid,
@@ -1177,30 +1116,50 @@
                     transaction.winAmount = winAmount;
                     
                     try {
-                    await collections.transactions.add(transaction);
+                        // Update the transaction with the win amount
+                        await collections.transactions.add(transaction);
                         console.log('Win transaction saved:', transaction);
-                    } catch (txError) {
-                        console.error('Error saving win transaction:', txError);
-                    }
-                    
-                    try {
-                    await updateWalletBalance(winAmount);
+                        
+                        // Set the flag to prevent the listener from updating the balance
+                        isWinBeingProcessed = true;
+                        
+                        // Update the user document directly to add the win amount
+                        const user = auth.currentUser;
+                        const userDoc = await collections.users.doc(user.uid).get();
+                        const userData = userDoc.data();
+                        const newBalance = (parseFloat(userData.balance) || 0) + winAmount;
+                        
+                        await collections.users.doc(user.uid).update({
+                            balance: newBalance
+                        });
+                        
+                        // Update local balance manually
+                        walletBalance = newBalance;
+                        document.getElementById('walletBalance').textContent = newBalance.toFixed(2);
+                        
                         console.log('Balance updated with win amount:', winAmount);
-                    } catch (balanceError) {
-                        console.error('Error updating balance:', balanceError);
+                        
+                        // Reset the flag after a short delay to ensure the listener has processed the update
+                        setTimeout(() => {
+                            isWinBeingProcessed = false;
+                        }, 1000);
+                    } catch (error) {
+                        isWinBeingProcessed = false; // Reset flag in case of error
+                        console.error('Error processing win:', error);
+                        showNotification('Error processing win', 'warning');
                     }
                     
-                    console.log('Showing win popup with amount:', winAmount);
+                    console.log('About to show win popup with amount:', winAmount);
                     showWinPopup(winAmount);
                 } else {
                     try {
-                    await collections.transactions.add(transaction);
+                        await collections.transactions.add(transaction);
                         console.log('Loss transaction saved:', transaction);
                     } catch (txError) {
                         console.error('Error saving loss transaction:', txError);
                     }
                     
-                    console.log('Showing lose popup');
+                    console.log('About to show lose popup');
                     showLosePopup();
                 }
                 
@@ -1211,7 +1170,7 @@
             } finally {
                 // Ensure bet state is reset after processing
                 setTimeout(() => {
-                resetBetStates();
+                    resetBetStates();
                 }, 100);
             }
         }
@@ -2056,24 +2015,33 @@
         // Update showWinPopup function
         function showWinPopup(amount) {
             try {
+                console.log('showWinPopup called with amount:', amount);
+                
                 // Update the win amount display
                 const winAmountEl = document.getElementById('winAmount');
                 if (winAmountEl) {
                     winAmountEl.textContent = amount.toFixed(2);
+                    console.log('Updated win amount element with:', amount.toFixed(2));
+                } else {
+                    console.error('winAmount element not found');
                 }
                 
                 // Show the win popup
                 const winPopup = document.getElementById('winPopup');
                 if (winPopup) {
-                    winPopup.style.display = 'flex';
+                    console.log('Found winPopup element, displaying it');
+                    winPopup.style.display = 'flex'; // Add flex display
                     winPopup.classList.remove('hidden');
                     
                     // Add an animation effect
-                setTimeout(() => {
+                    setTimeout(() => {
                         const popupContent = winPopup.querySelector('.win-popup-content');
                         if (popupContent) {
+                            console.log('Animating win popup content');
                             popupContent.classList.remove('scale-90');
                             popupContent.classList.add('scale-100');
+                        } else {
+                            console.error('win-popup-content element not found');
                         }
                     }, 10);
                 } else {
@@ -2089,18 +2057,24 @@
         // Update showLosePopup function
         function showLosePopup() {
             try {
+                console.log('showLosePopup called');
+                
                 // Show the lose popup
                 const losePopup = document.getElementById('losePopup');
                 if (losePopup) {
-                    losePopup.style.display = 'flex';
+                    console.log('Found losePopup element, displaying it');
+                    losePopup.style.display = 'flex'; // Add flex display
                     losePopup.classList.remove('hidden');
                     
                     // Add an animation effect
                     setTimeout(() => {
                         const popupContent = losePopup.querySelector('.lose-popup-content');
                         if (popupContent) {
+                            console.log('Animating lose popup content');
                             popupContent.classList.remove('scale-90');
                             popupContent.classList.add('scale-100');
+                        } else {
+                            console.error('lose-popup-content element not found');
                         }
                     }, 10);
                 } else {
@@ -2113,40 +2087,59 @@
             }
         }
 
-        // Add the hide functions for win/lose popups
+        // Update hideWinPopup function
         function hideWinPopup() {
             try {
+                console.log('hideWinPopup called');
                 const winPopup = document.getElementById('winPopup');
-                const popupContent = winPopup.querySelector('.win-popup-content');
-                
-                if (popupContent) {
-                    popupContent.classList.remove('scale-100');
-                    popupContent.classList.add('scale-90');
-                }
-                
-                setTimeout(() => {
-                    winPopup.style.display = 'none';
+                if (winPopup) {
+                    console.log('Found winPopup element, hiding it');
                     winPopup.classList.add('hidden');
-                }, 300);
+                    
+                    // Reset animation
+                    setTimeout(() => {
+                        const popupContent = winPopup.querySelector('.win-popup-content');
+                        if (popupContent) {
+                            console.log('Resetting win popup animation');
+                            popupContent.classList.add('scale-90');
+                            popupContent.classList.remove('scale-100');
+                        } else {
+                            console.error('win-popup-content element not found when hiding');
+                        }
+                        winPopup.style.display = 'none'; // Remove flex display after animation
+                    }, 300);
+                } else {
+                    console.error('Win popup element not found when trying to hide');
+                }
             } catch (error) {
                 console.error('Error hiding win popup:', error);
             }
         }
 
+        // Update hideLosePopup function
         function hideLosePopup() {
             try {
+                console.log('hideLosePopup called');
                 const losePopup = document.getElementById('losePopup');
-                const popupContent = losePopup.querySelector('.lose-popup-content');
-                
-                if (popupContent) {
-                    popupContent.classList.remove('scale-100');
-                    popupContent.classList.add('scale-90');
-                }
-                
-                setTimeout(() => {
-                    losePopup.style.display = 'none';
+                if (losePopup) {
+                    console.log('Found losePopup element, hiding it');
                     losePopup.classList.add('hidden');
-                }, 300);
+                    
+                    // Reset animation
+                    setTimeout(() => {
+                        const popupContent = losePopup.querySelector('.lose-popup-content');
+                        if (popupContent) {
+                            console.log('Resetting lose popup animation');
+                            popupContent.classList.add('scale-90');
+                            popupContent.classList.remove('scale-100');
+                        } else {
+                            console.error('lose-popup-content element not found when hiding');
+                        }
+                        losePopup.style.display = 'none'; // Remove flex display after animation
+                    }, 300);
+                } else {
+                    console.error('Lose popup element not found when trying to hide');
+                }
             } catch (error) {
                 console.error('Error hiding lose popup:', error);
             }

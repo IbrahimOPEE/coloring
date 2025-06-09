@@ -1,435 +1,6 @@
 {
   "results": [
     {
-      "number": 8,
-      "size": "BIG",
-      "color": "RED",
-      "timestamp": "2025-04-02T09:30:31.530Z",
-      "period": "2504021500-1",
-      "isMock": false
-    },
-    {
-      "number": 4,
-      "size": "SMALL",
-      "color": "RED",
-      "timestamp": "2025-04-02T09:31:01.532Z",
-      "period": "2504021500-2",
-      "isMock": false
-    },
-    {
-      "number": 0,
-      "size": "SMALL",
-      "color": "VIOLET",
-      "timestamp": "2025-04-02T09:48:02.223Z",
-      "period": "2504021517-2",
-      "isMock": false
-    },
-    {
-      "number": 0,
-      "size": "SMALL",
-      "color": "VIOLET",
-      "timestamp": "2025-04-02T09:48:31.524Z",
-      "period": "2504021518-1",
-      "isMock": false
-    },
-    {
-      "number": 4,
-      "size": "SMALL",
-      "color": "RED",
-      "timestamp": "2025-04-02T09:49:01.515Z",
-      "period": "2504021518-2",
-      "isMock": false
-    },
-    {
-      "number": 1,
-      "size": "SMALL",
-      "color": "GREEN",
-      "timestamp": "2025-04-02T09:49:31.517Z",
-      "period": "2504021519-1",
-      "isMock": false
-    },
-    {
-      "number": 3,
-      "size": "SMALL",
-      "color": "GREEN",
-      "timestamp": "2025-04-02T09:56:31.704Z",
-      "period": "2504021526-1",
-      "isMock": false
-    },
-    {
-      "number": 8,
-      "size": "BIG",
-      "color": "RED",
-      "timestamp": "2025-04-02T09:57:31.466Z",
-      "period": "2504021527-1",
-      "isMock": false
-    },
-    {
-      "number": 0,
-      "size": "SMALL",
-      "color": "VIOLET",
-      "timestamp": "2025-04-02T09:59:32.229Z",
-      "period": "2504021529-1",
-      "isMock": false
-    },
-    {
-      "number": 4,
-      "size": "SMALL",
-      "color": "RED",
-      "timestamp": "2025-04-02T10:00:01.566Z",
-      "period": "2504021529-2",
-      "isMock": false
-    },
-    {
-      "number": 4,
-      "size": "SMALL",
-      "color": "RED",
-      "timestamp": "2025-04-02T10:01:32.212Z",
-      "period": "2504021531-1",
-      "isMock": false
-    },
-    {
-      "number": 1,
-      "size": "SMALL",
-      "color": "GREEN",
-      "timestamp": "2025-04-02T10:02:01.523Z",
-      "period": "2504021531-2",
-      "isMock": false
-    },
-    {
-      "number": 4,
-      "size": "SMALL",
-      "color": "RED",
-      "timestamp": "2025-04-02T10:02:31.807Z",
-      "period": "2504021532-1",
-      "isMock": false
-    },
-    {
-      "number": 9,
-      "size": "BIG",
-      "color": "GREEN",
-      "timestamp": "2025-04-02T10:04:02.139Z",
-      "period": "2504021533-2",
-      "isMock": false
-    },
-    {
-      "number": 7,
-      "size": "BIG",
-      "color": "GREEN",
-      "timestamp": "2025-04-02T10:04:31.514Z",
-      "period": "2504021534-1",
-      "isMock": false
-    },
-    {
-      "number": 0,
-      "size": "SMALL",
-      "color": "VIOLET",
-      "timestamp": "2025-04-03T11:49:03.301Z",
-      "period": "2504031718-2",
-      "isMock": false
-    },
-    {
-      "number": 3,
-      "size": "SMALL",
-      "color": "GREEN",
-      "timestamp": "2025-04-03T11:52:03.217Z",
-      "period": "2504031721-2",
-      "isMock": false,
-      "betData": {
-        "period": "2504031722-1",
-        "bets": {
-          "RED": 0,
-          "GREEN": 0,
-          "VIOLET": 0
-        },
-        "numbers": {
-          "0": 0,
-          "1": 0,
-          "2": 0,
-          "3": 0,
-          "4": 0,
-          "5": 0,
-          "6": 0,
-          "7": 0,
-          "8": 0,
-          "9": 0
-        },
-        "sizes": {
-          "BIG": 0,
-          "SMALL": 0
-        },
-        "timestamp": "2025-04-03T11:52:00.006Z"
-      }
-    },
-    {
-      "number": 4,
-      "size": "SMALL",
-      "color": "RED",
-      "timestamp": "2025-04-03T11:52:33.265Z",
-      "period": "2504031722-1",
-      "isMock": false,
-      "betData": {
-        "period": "2504031722-2",
-        "bets": {
-          "RED": 0,
-          "GREEN": 0,
-          "VIOLET": 0
-        },
-        "numbers": {
-          "0": 0,
-          "1": 0,
-          "2": 0,
-          "3": 0,
-          "4": 0,
-          "5": 0,
-          "6": 0,
-          "7": 0,
-          "8": 0,
-          "9": 0
-        },
-        "sizes": {
-          "BIG": 0,
-          "SMALL": 0
-        },
-        "timestamp": "2025-04-03T11:52:30.013Z"
-      }
-    },
-    {
-      "number": 4,
-      "size": "SMALL",
-      "color": "RED",
-      "timestamp": "2025-04-03T11:53:03.284Z",
-      "period": "2504031722-2",
-      "isMock": false,
-      "betData": {
-        "period": "2504031723-1",
-        "bets": {
-          "RED": 0,
-          "GREEN": 0,
-          "VIOLET": 0
-        },
-        "numbers": {
-          "0": 0,
-          "1": 0,
-          "2": 0,
-          "3": 0,
-          "4": 0,
-          "5": 0,
-          "6": 0,
-          "7": 0,
-          "8": 0,
-          "9": 0
-        },
-        "sizes": {
-          "BIG": 0,
-          "SMALL": 0
-        },
-        "timestamp": "2025-04-03T11:53:00.012Z"
-      }
-    },
-    {
-      "number": 5,
-      "size": "BIG",
-      "color": "VIOLET GREEN",
-      "timestamp": "2025-04-03T11:53:33.248Z",
-      "period": "2504031723-1",
-      "isMock": false,
-      "betData": {
-        "period": "2504031723-2",
-        "bets": {
-          "RED": 0,
-          "GREEN": 0,
-          "VIOLET": 0
-        },
-        "numbers": {
-          "0": 0,
-          "1": 0,
-          "2": 0,
-          "3": 0,
-          "4": 0,
-          "5": 0,
-          "6": 0,
-          "7": 0,
-          "8": 0,
-          "9": 0
-        },
-        "sizes": {
-          "BIG": 0,
-          "SMALL": 0
-        },
-        "timestamp": "2025-04-03T11:53:30.016Z"
-      }
-    },
-    {
-      "number": 5,
-      "size": "BIG",
-      "color": "VIOLET GREEN",
-      "timestamp": "2025-04-03T11:54:03.885Z",
-      "period": "2504031723-2",
-      "isMock": false,
-      "betData": {
-        "period": "2504031724-1",
-        "bets": {
-          "RED": 0,
-          "GREEN": 0,
-          "VIOLET": 0
-        },
-        "numbers": {
-          "0": 0,
-          "1": 0,
-          "2": 0,
-          "3": 0,
-          "4": 0,
-          "5": 0,
-          "6": 0,
-          "7": 0,
-          "8": 0,
-          "9": 0
-        },
-        "sizes": {
-          "BIG": 0,
-          "SMALL": 0
-        },
-        "timestamp": "2025-04-03T11:54:00.012Z"
-      }
-    },
-    {
-      "number": 4,
-      "size": "SMALL",
-      "color": "RED",
-      "timestamp": "2025-04-03T12:12:33.224Z",
-      "period": "2504031742-1",
-      "isMock": false,
-      "betData": {
-        "period": "2504031742-2",
-        "bets": {
-          "RED": 0,
-          "GREEN": 0,
-          "VIOLET": 0,
-          "red": 1
-        },
-        "numbers": {
-          "0": 0,
-          "1": 0,
-          "2": 0,
-          "3": 0,
-          "4": 0,
-          "5": 0,
-          "6": 0,
-          "7": 0,
-          "8": 0,
-          "9": 0
-        },
-        "sizes": {
-          "BIG": 0,
-          "SMALL": 0
-        },
-        "timestamp": "2025-04-03T12:12:30.003Z"
-      }
-    },
-    {
-      "number": 9,
-      "size": "BIG",
-      "color": "GREEN",
-      "timestamp": "2025-04-03T12:19:31.520Z",
-      "period": "2504031749-1",
-      "isMock": false
-    },
-    {
-      "number": 8,
-      "size": "BIG",
-      "color": "RED",
-      "timestamp": "2025-04-03T12:21:31.522Z",
-      "period": "2504031751-1",
-      "isMock": false
-    },
-    {
-      "number": 5,
-      "size": "BIG",
-      "color": "VIOLET",
-      "timestamp": "2025-04-03T12:33:01.528Z",
-      "isMock": false
-    },
-    {
-      "number": 5,
-      "size": "BIG",
-      "color": "VIOLET GREEN",
-      "timestamp": "2025-04-03T12:41:01.504Z",
-      "isMock": false
-    },
-    {
-      "number": 1,
-      "size": "SMALL",
-      "color": "GREEN",
-      "timestamp": "2025-04-03T12:48:01.508Z",
-      "period": "2504031817-2",
-      "isMock": false
-    },
-    {
-      "number": 1,
-      "size": "SMALL",
-      "color": "GREEN",
-      "timestamp": "2025-04-03T12:48:31.516Z",
-      "period": "2504031818-1",
-      "isMock": false
-    },
-    {
-      "number": 3,
-      "size": "SMALL",
-      "color": "GREEN",
-      "timestamp": "2025-04-03T16:39:31.706Z",
-      "period": "2504032209-1",
-      "isMock": false
-    },
-    {
-      "number": 1,
-      "size": "SMALL",
-      "color": "GREEN",
-      "timestamp": "2025-04-03T16:41:31.519Z",
-      "period": "2504032211-1",
-      "isMock": false
-    },
-    {
-      "number": 3,
-      "size": "SMALL",
-      "color": "GREEN",
-      "timestamp": "2025-05-15T11:11:31.516Z",
-      "period": "2505151641-1",
-      "isMock": false
-    },
-    {
-      "number": 3,
-      "size": "SMALL",
-      "color": "GREEN",
-      "timestamp": "2025-05-15T11:12:01.532Z",
-      "period": "2505151641-2",
-      "isMock": false
-    },
-    {
-      "number": 6,
-      "size": "BIG",
-      "color": "RED",
-      "timestamp": "2025-05-15T11:13:02.477Z",
-      "period": "2505151642-2",
-      "isMock": false
-    },
-    {
-      "number": 8,
-      "size": "BIG",
-      "color": "RED",
-      "timestamp": "2025-05-15T11:14:31.516Z",
-      "period": "2505151644-1",
-      "isMock": false
-    },
-    {
-      "number": 1,
-      "size": "SMALL",
-      "color": "GREEN",
-      "timestamp": "2025-05-15T11:15:02.050Z",
-      "period": "2505151644-2",
-      "isMock": false
-    },
-    {
       "number": 9,
       "size": "BIG",
       "color": "GREEN",
@@ -947,6 +518,286 @@
       "color": "RED",
       "timestamp": "2025-06-01T12:50:31.516Z",
       "period": "2506011820-1",
+      "isMock": false
+    },
+    {
+      "number": 9,
+      "size": "BIG",
+      "color": "GREEN",
+      "timestamp": "2025-06-09T10:20:01.529Z",
+      "period": "2506091549-2",
+      "isMock": false
+    },
+    {
+      "number": 1,
+      "size": "SMALL",
+      "color": "GREEN",
+      "timestamp": "2025-06-09T10:21:01.834Z",
+      "period": "2506091550-2",
+      "isMock": false
+    },
+    {
+      "number": 3,
+      "size": "SMALL",
+      "color": "GREEN",
+      "timestamp": "2025-06-09T10:22:32.609Z",
+      "period": "2506091552-1",
+      "isMock": false
+    },
+    {
+      "number": 0,
+      "size": "SMALL",
+      "color": "VIOLET",
+      "timestamp": "2025-06-09T10:30:35.141Z",
+      "period": "2506091600-1",
+      "isMock": false
+    },
+    {
+      "number": 4,
+      "size": "SMALL",
+      "color": "RED",
+      "timestamp": "2025-06-09T10:33:39.973Z",
+      "period": "2506091603-1",
+      "isMock": false
+    },
+    {
+      "number": 6,
+      "size": "BIG",
+      "color": "RED",
+      "timestamp": "2025-06-09T10:34:31.538Z",
+      "period": "2506091604-1",
+      "isMock": false
+    },
+    {
+      "number": 1,
+      "size": "SMALL",
+      "color": "GREEN",
+      "timestamp": "2025-06-09T10:35:32.480Z",
+      "period": "2506091605-1",
+      "isMock": false
+    },
+    {
+      "number": 5,
+      "size": "BIG",
+      "color": "VIOLET GREEN",
+      "timestamp": "2025-06-09T10:37:31.311Z",
+      "period": "2506091607-1",
+      "isMock": false
+    },
+    {
+      "number": 9,
+      "size": "BIG",
+      "color": "GREEN",
+      "timestamp": "2025-06-09T10:39:31.553Z",
+      "period": "2506091609-1",
+      "isMock": false
+    },
+    {
+      "number": 3,
+      "size": "SMALL",
+      "color": "GREEN",
+      "timestamp": "2025-06-09T10:40:02.786Z",
+      "period": "2506091609-2",
+      "isMock": false
+    },
+    {
+      "number": 7,
+      "size": "BIG",
+      "color": "GREEN",
+      "timestamp": "2025-06-09T10:41:01.573Z",
+      "period": "2506091610-2",
+      "isMock": false
+    },
+    {
+      "number": 4,
+      "size": "SMALL",
+      "color": "RED",
+      "timestamp": "2025-06-09T10:41:31.500Z",
+      "period": "2506091611-1",
+      "isMock": false
+    },
+    {
+      "number": 9,
+      "size": "BIG",
+      "color": "GREEN",
+      "timestamp": "2025-06-09T10:43:31.531Z",
+      "period": "2506091613-1",
+      "isMock": false
+    },
+    {
+      "number": 3,
+      "size": "SMALL",
+      "color": "GREEN",
+      "timestamp": "2025-06-09T10:44:01.531Z",
+      "period": "2506091613-2",
+      "isMock": false
+    },
+    {
+      "number": 6,
+      "size": "BIG",
+      "color": "RED",
+      "timestamp": "2025-06-09T10:44:31.514Z",
+      "period": "2506091614-1",
+      "isMock": false
+    },
+    {
+      "number": 2,
+      "size": "SMALL",
+      "color": "RED",
+      "timestamp": "2025-06-09T10:46:02.017Z",
+      "period": "2506091615-2",
+      "isMock": false
+    },
+    {
+      "number": 5,
+      "size": "BIG",
+      "color": "VIOLET GREEN",
+      "timestamp": "2025-06-09T10:48:06.542Z",
+      "period": "2506091617-2",
+      "isMock": false
+    },
+    {
+      "number": 9,
+      "size": "BIG",
+      "color": "GREEN",
+      "timestamp": "2025-06-09T10:49:31.467Z",
+      "period": "2506091619-1",
+      "isMock": false
+    },
+    {
+      "number": 7,
+      "size": "BIG",
+      "color": "GREEN",
+      "timestamp": "2025-06-09T10:50:01.583Z",
+      "period": "2506091619-2",
+      "isMock": false
+    },
+    {
+      "number": 1,
+      "size": "SMALL",
+      "color": "GREEN",
+      "timestamp": "2025-06-09T10:50:31.515Z",
+      "period": "2506091620-1",
+      "isMock": false
+    },
+    {
+      "number": 2,
+      "size": "SMALL",
+      "color": "RED",
+      "timestamp": "2025-06-09T10:51:01.530Z",
+      "period": "2506091620-2",
+      "isMock": false
+    },
+    {
+      "number": 0,
+      "size": "SMALL",
+      "color": "VIOLET",
+      "timestamp": "2025-06-09T10:51:31.526Z",
+      "period": "2506091621-1",
+      "isMock": false
+    },
+    {
+      "number": 6,
+      "size": "BIG",
+      "color": "RED",
+      "timestamp": "2025-06-09T10:52:01.586Z",
+      "period": "2506091621-2",
+      "isMock": false
+    },
+    {
+      "number": 9,
+      "size": "BIG",
+      "color": "GREEN",
+      "timestamp": "2025-06-09T10:52:31.512Z",
+      "period": "2506091622-1",
+      "isMock": false
+    },
+    {
+      "number": 3,
+      "size": "SMALL",
+      "color": "GREEN",
+      "timestamp": "2025-06-09T10:53:01.539Z",
+      "period": "2506091622-2",
+      "isMock": false
+    },
+    {
+      "number": 6,
+      "size": "BIG",
+      "color": "RED",
+      "timestamp": "2025-06-09T10:53:31.545Z",
+      "period": "2506091623-1",
+      "isMock": false
+    },
+    {
+      "number": 7,
+      "size": "BIG",
+      "color": "GREEN",
+      "timestamp": "2025-06-09T10:54:03.261Z",
+      "period": "2506091623-2",
+      "isMock": false
+    },
+    {
+      "number": 7,
+      "size": "BIG",
+      "color": "GREEN",
+      "timestamp": "2025-06-09T10:57:01.536Z",
+      "period": "2506091626-2",
+      "isMock": false
+    },
+    {
+      "number": 0,
+      "size": "SMALL",
+      "color": "VIOLET",
+      "timestamp": "2025-06-09T10:57:39.791Z",
+      "period": "2506091627-1",
+      "isMock": false
+    },
+    {
+      "number": 4,
+      "size": "SMALL",
+      "color": "RED",
+      "timestamp": "2025-06-09T10:58:03.788Z",
+      "period": "2506091627-2",
+      "isMock": false
+    },
+    {
+      "number": 2,
+      "size": "SMALL",
+      "color": "RED",
+      "timestamp": "2025-06-09T10:59:01.614Z",
+      "period": "2506091628-2",
+      "isMock": false
+    },
+    {
+      "number": 1,
+      "size": "SMALL",
+      "color": "GREEN",
+      "timestamp": "2025-06-09T11:03:31.837Z",
+      "period": "2506091633-1",
+      "isMock": false
+    },
+    {
+      "number": 8,
+      "size": "BIG",
+      "color": "RED",
+      "timestamp": "2025-06-09T11:05:01.605Z",
+      "period": "2506091634-2",
+      "isMock": false
+    },
+    {
+      "number": 6,
+      "size": "BIG",
+      "color": "RED",
+      "timestamp": "2025-06-09T11:05:31.523Z",
+      "period": "2506091635-1",
+      "isMock": false
+    },
+    {
+      "number": 2,
+      "size": "SMALL",
+      "color": "RED",
+      "timestamp": "2025-06-09T11:06:01.537Z",
+      "period": "2506091635-2",
       "isMock": false
     }
   ]
