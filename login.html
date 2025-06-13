@@ -357,9 +357,9 @@
             auth.onAuthStateChanged(async function(user) {
                 if (!user) {
                     window.location.replace('auth.html');
-                return;
-            }
-            
+                    return;
+                }
+                
                 // Get user data from Firestore
                 const userDoc = await collections.users.doc(user.uid).get();
                 if (userDoc.exists) {
@@ -480,47 +480,57 @@
             await collections.dailyTransactions.doc(today).set(currentTransactions);
         }
 
+        // --- LocalStorage Helpers ---
+        function saveToLocalStorage(key, value) {
+            localStorage.setItem(key, JSON.stringify(value));
+        }
+        function loadFromLocalStorage(key, fallback = []) {
+            try {
+                const data = localStorage.getItem(key);
+                return data ? JSON.parse(data) : fallback;
+            } catch (e) { return fallback; }
+        }
+        function addToLocalHistory(key, item, max = 100) {
+            const arr = loadFromLocalStorage(key);
+            arr.unshift(item);
+            if (arr.length > max) arr.length = max;
+            saveToLocalStorage(key, arr);
+        }
+
+        const LOCAL_TX_KEY = 'local_transactions';
+        const LOCAL_DEPOSIT_KEY = 'local_deposits';
+        const LOCAL_WITHDRAW_KEY = 'local_withdrawals';
+        const LOCAL_BET_KEY = 'local_bets';
+
         async function processAmount() {
             const amount = parseInt(currentAmount) || 0;
             const user = auth.currentUser;
-            
-            if (!user) {
-                showNotification('Please login first', 'warning');
-                return;
-            }
-            
-            if (amount <= 0) {
-                showNotification('Please enter a valid amount', 'warning');
-                return;
-            }
-            
+            if (!user) { showNotification('Please login first', 'warning'); return; }
+            if (amount <= 0) { showNotification('Please enter a valid amount', 'warning'); return; }
             try {
                 const dailyTransactions = await getDailyTransactions();
                 const userDoc = await collections.users.doc(user.uid).get();
                 const userData = userDoc.data();
-            
-            if (currentAction === 'withdraw') {
-                    if (amount > userData.balance) {
-                    showNotification('Insufficient balance for withdrawal', 'warning');
-                    return;
-                }
-                
-                if ((dailyTransactions.withdrawals || 0) + amount > DAILY_WITHDRAW_LIMIT) {
-                    showNotification(`Daily withdrawal limit (₹${DAILY_WITHDRAW_LIMIT}) exceeded`, 'warning');
-                    return;
-                }
-                
+                if (currentAction === 'withdraw') {
+                    if (amount > userData.balance) { showNotification('Insufficient balance for withdrawal', 'warning'); return; }
+                    if ((dailyTransactions.withdrawals || 0) + amount > DAILY_WITHDRAW_LIMIT) { showNotification(`Daily withdrawal limit (₹${DAILY_WITHDRAW_LIMIT}) exceeded`, 'warning'); return; }
                     await updateDailyTransactions('withdrawals', amount);
-            } else if (currentAction === 'deposit') {
-                if ((dailyTransactions.deposits || 0) + amount > DAILY_DEPOSIT_LIMIT) {
-                    showNotification(`Daily deposit limit (₹${DAILY_DEPOSIT_LIMIT}) exceeded`, 'warning');
-                    return;
-                }
-                
+                } else if (currentAction === 'deposit') {
+                    if ((dailyTransactions.deposits || 0) + amount > DAILY_DEPOSIT_LIMIT) { showNotification(`Daily deposit limit (₹${DAILY_DEPOSIT_LIMIT}) exceeded`, 'warning'); return; }
                     await updateDailyTransactions('deposits', amount);
                 }
-                
-                // Create transaction record
+                // Save to localStorage
+                const tx = {
+                    userId: user.uid,
+                    type: currentAction,
+                    amount: amount,
+                    status: 'pending',
+                    timestamp: new Date().toISOString()
+                };
+                addToLocalHistory(LOCAL_TX_KEY, tx);
+                if (currentAction === 'deposit') addToLocalHistory(LOCAL_DEPOSIT_KEY, tx);
+                if (currentAction === 'withdraw') addToLocalHistory(LOCAL_WITHDRAW_KEY, tx);
+                // Firestore
                 await collections.transactions.add({
                     userId: user.uid,
                     type: currentAction,
@@ -528,19 +538,11 @@
                     status: 'pending',
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
-            
-            // WhatsApp message template
-            const message = `${currentAction.charAt(0).toUpperCase() + currentAction.slice(1)} Request
-Amount: ₹${amount}
-Daily ${currentAction}s: ₹${dailyTransactions[currentAction + 's']}
-Remaining limit: ₹${currentAction === 'withdraw' ? 
-                DAILY_WITHDRAW_LIMIT - dailyTransactions.withdrawals : 
-                DAILY_DEPOSIT_LIMIT - dailyTransactions.deposits}`;
-            
-            const whatsappLink = `https://wa.me/918076054815?text=${encodeURIComponent(message)}`;
-            window.open(whatsappLink, '_blank');
-            hideAmountPopup();
-                
+                // WhatsApp message
+                const message = `${currentAction.charAt(0).toUpperCase() + currentAction.slice(1)} Request\nAmount: ₹${amount}\nDaily ${currentAction}s: ₹${dailyTransactions[currentAction + 's']}\nRemaining limit: ₹${currentAction === 'withdraw' ? DAILY_WITHDRAW_LIMIT - dailyTransactions.withdrawals : DAILY_DEPOSIT_LIMIT - dailyTransactions.deposits}`;
+                const whatsappLink = `https://wa.me/918076054815?text=${encodeURIComponent(message)}`;
+                window.open(whatsappLink, '_blank');
+                hideAmountPopup();
             } catch (error) {
                 console.error('Error processing amount:', error);
                 showNotification('Error processing request', 'warning');
@@ -560,111 +562,41 @@ Remaining limit: ₹${currentAction === 'withdraw' ?
         async function loadGameHistory() {
             const historyList = document.getElementById('gameHistoryList');
             if (!historyList) return;
-            
             const user = auth.currentUser;
             if (!user) return;
-            
-            try {
-                // Create composite query for proper indexing
-                const query = collections.gameHistory
-                    .where('userId', '==', user.uid)
-                    .orderBy('timestamp', 'desc')
-                    .limit(50);
-
-                const snapshot = await query.get().catch(error => {
-                    if (error.code === 'failed-precondition') {
-                        showNotification('Loading game history...', 'warning');
-                        return null;
-                    }
-                    throw error;
-                });
-
-                if (!snapshot) return;
-                
+            // Load from localStorage
+            let bets = loadFromLocalStorage(LOCAL_BET_KEY);
+            bets = bets.filter(b => b.userId === user.uid);
             historyList.innerHTML = '';
-            
-                if (snapshot.empty) {
-                historyList.innerHTML = `
-                    <div class="text-center text-gray-400 py-8">
-                        <i class="fas fa-history text-4xl mb-2"></i>
-                        <p>No game history yet</p>
-                    </div>
-                `;
+            if (!bets.length) {
+                historyList.innerHTML = `<div class="text-center text-gray-400 py-8"><i class="fas fa-history text-4xl mb-2"></i><p>No game history yet</p></div>`;
                 return;
             }
-            
-                snapshot.forEach(doc => {
-                    const item = doc.data() || {};
-                    const date = item.timestamp ? item.timestamp.toDate() : new Date();
+            bets.forEach(item => {
+                const date = item.timestamp ? new Date(item.timestamp) : new Date();
                 const card = document.createElement('div');
                 card.className = 'bg-[#252a3c] rounded-xl p-4 mb-4';
-                
-                // Determine result color and icon
                 const resultColor = item.isWin ? 'text-green-500' : 'text-red-500';
                 const resultIcon = item.isWin ? 'fa-check-circle' : 'fa-times-circle';
-                
-                // Handle color display for result
                 let resultColorStyle = '';
-                    const resultData = (item.result || {}).color || '';
-                    if (resultData === 'RED') {
-                    resultColorStyle = 'background-color: #ef4444';
-                    } else if (resultData === 'GREEN') {
-                    resultColorStyle = 'background-color: #22c55e';
-                    } else if (resultData === 'VIOLET') {
-                    resultColorStyle = 'background-color: #8b5cf6';
-                    } else if (resultData === 'VIOLET RED') {
-                    resultColorStyle = 'background: linear-gradient(45deg, #8b5cf6 50%, #ef4444 50%)';
-                }
-                    
-                    const result = item.result || {};
-                    const betAmount = parseFloat(item.betAmount) || 0;
-                    const winAmount = parseFloat(item.winAmount) || 0;
-                
+                if (item.resultColor === 'RED') resultColorStyle = 'background-color: #ef4444';
+                else if (item.resultColor === 'GREEN') resultColorStyle = 'background-color: #22c55e';
+                else if (item.resultColor === 'VIOLET') resultColorStyle = 'background-color: #8b5cf6';
+                else if (item.resultColor === 'VIOLET RED') resultColorStyle = 'background: linear-gradient(45deg, #8b5cf6 50%, #ef4444 50%)';
                 card.innerHTML = `
                     <div class="flex items-center justify-between mb-2">
-                        <div class="text-sm text-gray-400">
-                            ${date.toLocaleDateString()} ${date.toLocaleTimeString()}
-                        </div>
-                        <div class="${resultColor} flex items-center gap-1">
-                            <i class="fas ${resultIcon}"></i>
-                            ${item.isWin ? 'Won' : 'Lost'}
-                        </div>
+                        <div class="text-sm text-gray-400">${date.toLocaleDateString()} ${date.toLocaleTimeString()}</div>
+                        <div class="${resultColor} flex items-center gap-1"><i class="fas ${resultIcon}"></i>${item.isWin ? 'Won' : 'Lost'}</div>
                     </div>
                     <div class="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                            <div class="text-gray-400">Bet Amount</div>
-                                <div class="text-white">₹${betAmount.toFixed(2)}</div>
-                        </div>
-                        <div>
-                            <div class="text-gray-400">${item.isWin ? 'Won Amount' : 'Lost Amount'}</div>
-                                <div class="text-white">₹${item.isWin ? winAmount.toFixed(2) : betAmount.toFixed(2)}</div>
-                        </div>
+                        <div><div class="text-gray-400">Bet Amount</div><div class="text-white">₹${(item.betAmount || 0).toFixed(2)}</div></div>
+                        <div><div class="text-gray-400">${item.isWin ? 'Won Amount' : 'Lost Amount'}</div><div class="text-white">₹${item.isWin ? (item.winAmount || 0).toFixed(2) : (item.betAmount || 0).toFixed(2)}</div></div>
                     </div>
-                    <div class="mt-2 text-sm">
-                        <div class="text-gray-400">Bet Details</div>
-                        <div class="text-white">
-                                ${item.betType === 'color' ? `Color: ${item.betValue || ''}` : 
-                                  item.betType === 'number' ? `Number: ${item.betValue || ''}` : 
-                                  `Size: ${item.betValue || ''}`}
-                        </div>
-                    </div>
-                    <div class="mt-2 text-sm">
-                        <div class="text-gray-400">Result</div>
-                        <div class="text-white flex items-center gap-2">
-                                Number: ${result.number || 0}
-                                <span class="px-2 py-1 rounded text-xs" style="${resultColorStyle}">${result.color || 'Unknown'}</span>
-                                Size: ${result.size || ''}
-                        </div>
-                    </div>
+                    <div class="mt-2 text-sm"><div class="text-gray-400">Bet Details</div><div class="text-white">${item.betType === 'color' ? `Color: ${item.betValue || ''}` : item.betType === 'number' ? `Number: ${item.betValue || ''}` : `Size: ${item.betValue || ''}`}</div></div>
+                    <div class="mt-2 text-sm"><div class="text-gray-400">Result</div><div class="text-white flex items-center gap-2">Number: ${item.resultNumber || 0}<span class="px-2 py-1 rounded text-xs" style="${resultColorStyle}">${item.resultColor || 'Unknown'}</span>Size: ${item.resultSize || ''}</div></div>
                 `;
-                
                 historyList.appendChild(card);
             });
-                
-            } catch (error) {
-                console.error('Error loading game history:', error);
-                showNotification('Error loading game history', 'warning');
-            }
         }
 
         // Transaction functions
@@ -688,100 +620,34 @@ Remaining limit: ₹${currentAction === 'withdraw' ?
         }
 
         async function loadTransactions(specificType = null) {
-            const transactionsList = document.getElementById('transactionsList') || 
-                                   document.getElementById('depositHistoryList') || 
-                                   document.getElementById('withdrawalHistoryList');
+            const transactionsList = document.getElementById('transactionsList') || document.getElementById('depositHistoryList') || document.getElementById('withdrawalHistoryList');
             if (!transactionsList) return;
-            
             const user = auth.currentUser;
             if (!user) return;
-            
-            try {
-                let query = collections.transactions
-                    .where('userId', '==', user.uid);
-
-                // Handle specific type for deposit/withdrawal history
-                if (specificType) {
-                    query = query.where('type', '==', specificType);
-                } else if (currentTransactionType !== 'all') {
-                    query = query.where('type', '==', currentTransactionType === 'deposits' ? 'deposit' : 'withdrawal');
-                }
-
-                // Add timestamp ordering after where clauses
-                query = query.orderBy('timestamp', 'desc');
-                
-                const snapshot = await query.limit(50).get();
-                
+            // Load from localStorage
+            let txs = loadFromLocalStorage(LOCAL_TX_KEY);
+            if (specificType) txs = txs.filter(t => t.type === specificType);
+            else if (currentTransactionType !== 'all') txs = txs.filter(t => t.type === (currentTransactionType === 'deposits' ? 'deposit' : 'withdrawal'));
+            txs = txs.filter(t => t.userId === user.uid);
             transactionsList.innerHTML = '';
-            
-                if (snapshot.empty) {
-                transactionsList.innerHTML = `
-                    <div class="text-center text-gray-400 py-8">
-                        <i class="fas fa-history text-4xl mb-2"></i>
-                        <p>No transactions found</p>
-                    </div>
-                `;
+            if (!txs.length) {
+                transactionsList.innerHTML = `<div class="text-center text-gray-400 py-8"><i class="fas fa-history text-4xl mb-2"></i><p>No transactions found</p></div>`;
                 return;
             }
-            
-                snapshot.forEach(doc => {
-                    const item = doc.data() || {};
-                    const date = item.timestamp ? item.timestamp.toDate() : new Date();
+            txs.forEach(item => {
+                const date = item.timestamp ? new Date(item.timestamp) : new Date();
                 const card = document.createElement('div');
                 card.className = 'bg-[#252a3c] rounded-xl p-4 mb-4';
-                    
-                    const type = (item.type || '').toString();
-                    const status = (item.status || 'pending').toString();
-                    const amount = parseFloat(item.amount) || 0;
-                
+                const type = (item.type || '').toString();
+                const status = (item.status || 'pending').toString();
+                const amount = parseFloat(item.amount) || 0;
                 let statusColor = 'text-yellow-500';
                 let statusIcon = 'fa-clock';
-                
-                    if (status === 'completed') {
-                    statusColor = 'text-green-500';
-                    statusIcon = 'fa-check-circle';
-                    } else if (status === 'failed') {
-                    statusColor = 'text-red-500';
-                    statusIcon = 'fa-times-circle';
-                }
-                
-                card.innerHTML = `
-                    <div class="flex items-center justify-between mb-2">
-                        <div class="text-sm text-gray-400">
-                            ${date.toLocaleDateString()} ${date.toLocaleTimeString()}
-                        </div>
-                        <div class="${statusColor} flex items-center gap-1">
-                            <i class="fas ${statusIcon}"></i>
-                                ${status.charAt(0).toUpperCase()}${status.slice(1)}
-                        </div>
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <div class="text-white font-medium">
-                                    ${type.charAt(0).toUpperCase()}${type.slice(1)}
-                            </div>
-                            <div class="text-sm text-gray-400">
-                                    ${type === 'withdrawal' ? 'Via WhatsApp' : 'To Wallet'}
-                            </div>
-                        </div>
-                        <div class="text-right">
-                            <div class="text-white font-medium">
-                                    ₹${amount.toFixed(2)}
-                            </div>
-                                <div class="text-sm ${type === 'deposit' ? 'text-green-500' : 'text-red-500'}">
-                                    ${type === 'deposit' ? '+' : '-'}
-                            </div>
-                        </div>
-                    </div>
-                `;
-                
+                if (status === 'completed') { statusColor = 'text-green-500'; statusIcon = 'fa-check-circle'; }
+                else if (status === 'failed') { statusColor = 'text-red-500'; statusIcon = 'fa-times-circle'; }
+                card.innerHTML = `<div class="flex items-center justify-between mb-2"><div class="text-sm text-gray-400">${date.toLocaleDateString()} ${date.toLocaleTimeString()}</div><div class="${statusColor} flex items-center gap-1"><i class="fas ${statusIcon}"></i>${status.charAt(0).toUpperCase()}${status.slice(1)}</div></div><div class="flex items-center justify-between"><div><div class="text-white font-medium">${type.charAt(0).toUpperCase()}${type.slice(1)}</div><div class="text-sm text-gray-400">${type === 'withdrawal' ? 'Via WhatsApp' : 'To Wallet'}</div></div><div class="text-right"><div class="text-white font-medium">₹${amount.toFixed(2)}</div><div class="text-sm ${type === 'deposit' ? 'text-green-500' : 'text-red-500'}">${type === 'deposit' ? '+' : '-'}</div></div></div>`;
                 transactionsList.appendChild(card);
             });
-                
-            } catch (error) {
-                console.error('Error loading transactions:', error);
-                showNotification('Error loading transactions', 'warning');
-            }
         }
 
         // Deposit History functions

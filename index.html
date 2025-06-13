@@ -2487,6 +2487,55 @@ Current Balance: ₹${walletBalance.toFixed(2)}`;
                 showNotification('Error showing result', 'error');
             }
         }
+
+        // --- LocalStorage Helpers (add at the top of the script section if not present) ---
+        function saveToLocalStorage(key, value) {
+            localStorage.setItem(key, JSON.stringify(value));
+        }
+        function loadFromLocalStorage(key, fallback = []) {
+            try {
+                const data = localStorage.getItem(key);
+                return data ? JSON.parse(data) : fallback;
+            } catch (e) { return fallback; }
+        }
+        function addToLocalHistory(key, item, max = 100) {
+            const arr = loadFromLocalStorage(key);
+            arr.unshift(item);
+            if (arr.length > max) arr.length = max;
+            saveToLocalStorage(key, arr);
+        }
+        const LOCAL_BET_KEY = 'local_bets';
+        // --- Patch processResult to save bet to localStorage ---
+        const origProcessResult = processResult;
+        processResult = async function(result) {
+            // Call original logic
+            await origProcessResult.apply(this, arguments);
+            // Save bet to localStorage for history
+            try {
+                const user = auth.currentUser;
+                if (!user || !activeBetConfirmed || !currentBet) return;
+                // Compose bet object for local history
+                let isWin = false;
+                switch (currentBet.type) {
+                    case 'color': isWin = result.color.includes(currentBet.value); break;
+                    case 'number': isWin = result.number === parseInt(currentBet.value); break;
+                    case 'size': isWin = result.size === currentBet.value; break;
+                }
+                const betObj = {
+                    userId: user.uid,
+                    betType: currentBet.type,
+                    betValue: currentBet.value,
+                    betAmount: currentBet.amount,
+                    resultNumber: result.number,
+                    resultColor: result.color,
+                    resultSize: result.size,
+                    isWin: isWin,
+                    winAmount: isWin ? currentBet.amount * 2 : 0,
+                    timestamp: new Date().toISOString()
+                };
+                addToLocalHistory(LOCAL_BET_KEY, betObj);
+            } catch (e) { /* ignore */ }
+        }
     </script>
 </body>
 </html>

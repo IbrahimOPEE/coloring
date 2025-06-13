@@ -4,62 +4,6 @@
       "number": 0,
       "size": "SMALL",
       "color": "VIOLET",
-      "timestamp": "2025-06-09T10:51:31.526Z",
-      "period": "2506091621-1",
-      "isMock": false
-    },
-    {
-      "number": 6,
-      "size": "BIG",
-      "color": "RED",
-      "timestamp": "2025-06-09T10:52:01.586Z",
-      "period": "2506091621-2",
-      "isMock": false
-    },
-    {
-      "number": 9,
-      "size": "BIG",
-      "color": "GREEN",
-      "timestamp": "2025-06-09T10:52:31.512Z",
-      "period": "2506091622-1",
-      "isMock": false
-    },
-    {
-      "number": 3,
-      "size": "SMALL",
-      "color": "GREEN",
-      "timestamp": "2025-06-09T10:53:01.539Z",
-      "period": "2506091622-2",
-      "isMock": false
-    },
-    {
-      "number": 6,
-      "size": "BIG",
-      "color": "RED",
-      "timestamp": "2025-06-09T10:53:31.545Z",
-      "period": "2506091623-1",
-      "isMock": false
-    },
-    {
-      "number": 7,
-      "size": "BIG",
-      "color": "GREEN",
-      "timestamp": "2025-06-09T10:54:03.261Z",
-      "period": "2506091623-2",
-      "isMock": false
-    },
-    {
-      "number": 7,
-      "size": "BIG",
-      "color": "GREEN",
-      "timestamp": "2025-06-09T10:57:01.536Z",
-      "period": "2506091626-2",
-      "isMock": false
-    },
-    {
-      "number": 0,
-      "size": "SMALL",
-      "color": "VIOLET",
       "timestamp": "2025-06-09T10:57:39.791Z",
       "period": "2506091627-1",
       "isMock": false
@@ -1266,6 +1210,104 @@
       "color": "GREEN",
       "timestamp": "2025-06-09T13:24:35.558Z",
       "period": "2506091854-1",
+      "isMock": false,
+      "betCounts": {
+        "red": 0,
+        "green": 0,
+        "violet": 0,
+        "totalAmount": 0
+      }
+    },
+    {
+      "number": 5,
+      "size": "BIG",
+      "color": "GREEN",
+      "timestamp": "2025-06-13T11:58:33.390Z",
+      "period": "2506131728-1",
+      "isMock": false,
+      "betCounts": {
+        "red": 0,
+        "green": 0,
+        "violet": 0,
+        "totalAmount": 0
+      }
+    },
+    {
+      "number": 2,
+      "size": "SMALL",
+      "color": "RED",
+      "timestamp": "2025-06-13T12:01:02.076Z",
+      "period": "2506131730-2",
+      "isMock": false,
+      "betCounts": {
+        "red": 0,
+        "green": 0,
+        "violet": 0,
+        "totalAmount": 0
+      }
+    },
+    {
+      "number": 1,
+      "size": "SMALL",
+      "color": "GREEN",
+      "timestamp": "2025-06-13T12:01:32.015Z",
+      "period": "2506131731-1",
+      "isMock": false,
+      "betCounts": {
+        "red": 0,
+        "green": 0,
+        "violet": 0,
+        "totalAmount": 0
+      }
+    },
+    {
+      "number": 3,
+      "size": "SMALL",
+      "color": "GREEN",
+      "timestamp": "2025-06-13T12:04:05.141Z",
+      "period": "2506131733-2",
+      "isMock": false,
+      "betCounts": {
+        "red": 0,
+        "green": 0,
+        "violet": 0,
+        "totalAmount": 0
+      }
+    },
+    {
+      "number": 6,
+      "size": "BIG",
+      "color": "RED",
+      "timestamp": "2025-06-13T12:05:04.556Z",
+      "period": "2506131734-2",
+      "isMock": false,
+      "betCounts": {
+        "red": 0,
+        "green": 0,
+        "violet": 0,
+        "totalAmount": 0
+      }
+    },
+    {
+      "number": 7,
+      "size": "BIG",
+      "color": "GREEN",
+      "timestamp": "2025-06-13T12:19:32.008Z",
+      "period": "2506131749-1",
+      "isMock": false,
+      "betCounts": {
+        "red": 0,
+        "green": 0,
+        "violet": 0,
+        "totalAmount": 0
+      }
+    },
+    {
+      "number": 8,
+      "size": "BIG",
+      "color": "RED",
+      "timestamp": "2025-06-13T12:22:34.016Z",
+      "period": "2506131752-1",
       "isMock": false,
       "betCounts": {
         "red": 0,

@@ -93,8 +93,7 @@
         async function handleLogout() {
             try {
                 await auth.signOut();
-                // Clear any local data
-                localStorage.clear();
+                // Only clear sessionStorage, not localStorage
                 sessionStorage.clear();
                 window.location.href = 'auth.html';
             } catch (error) {
